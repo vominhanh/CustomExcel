@@ -241,8 +241,20 @@ export default function Home() {
 
             XLSX.utils.book_append_sheet(wb, ws, 'Combined Data')
 
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19)
-            const fileName = `merged_data_${timestamp}.xlsx`
+            // Xác định tên file dựa vào tên file CSV đầu tiên
+            let fileName = 'merged_data.xlsx'
+            if (files.length > 0) {
+                const firstFileName = files[0].name
+                if (firstFileName.startsWith('Sponsored_Brands')) {
+                    fileName = 'SB_Combine.xlsx'
+                } else if (firstFileName.startsWith('Sponsored_Products')) {
+                    fileName = 'SP_Combine.xlsx'
+                } else {
+                    // Nếu không khớp, giữ tên mặc định với timestamp
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19)
+                    fileName = `merged_data_${timestamp}.xlsx`
+                }
+            }
 
             XLSX.writeFile(wb, fileName)
 

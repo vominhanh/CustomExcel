@@ -65,7 +65,7 @@ export default function AnalyzePage() {
   const [analysisSheetName, setAnalysisSheetName] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  
+
   // Luôn sử dụng Exact Match
   const exactMatch = true
 
@@ -116,18 +116,18 @@ export default function AnalyzePage() {
       .filter(word => word.length > 0 && !stopWords.includes(word))
   }
 
-const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[number], isExactWordFn: (text: string, word: string) => boolean) => {
-  const normalizedText = text.toLowerCase()
-  if (group.patterns.some(pattern => normalizedText.includes(pattern))) {
-    return true
-  }
+  const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[number], isExactWordFn: (text: string, word: string) => boolean) => {
+    const normalizedText = text.toLowerCase()
+    if (group.patterns.some(pattern => normalizedText.includes(pattern))) {
+      return true
+    }
 
-  if (group.exactWords && group.exactWords.some(word => isExactWordFn(normalizedText, word))) {
-    return true
-  }
+    if (group.exactWords && group.exactWords.some(word => isExactWordFn(normalizedText, word))) {
+      return true
+    }
 
-  return false
-}
+    return false
+  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     console.log('File input changed', e.target.files)
@@ -175,12 +175,12 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
       const arrayBuffer = await file.arrayBuffer()
       const workbook = XLSX.read(arrayBuffer, { type: 'array' })
       setOriginalWorkbook(workbook)
-      
-      const sheetName = workbook.SheetNames.includes('Combined Data') 
-        ? 'Combined Data' 
+
+      const sheetName = workbook.SheetNames.includes('Combined Data')
+        ? 'Combined Data'
         : workbook.SheetNames[0]
       setAnalysisSheetName(sheetName)
-      
+
       const worksheet = workbook.Sheets[sheetName]
       const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
 
@@ -194,7 +194,7 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
       const matchedProductIndex = headers.findIndex((h: string) => {
         // Tìm "Matched product" hoặc "Customer search term"
         return (h.includes('matched') && h.includes('product')) ||
-               (h.includes('customer') && h.includes('search') && h.includes('term'))
+          (h.includes('customer') && h.includes('search') && h.includes('term'))
       })
       const impressionsIndex = headers.findIndex((h: string) => h.includes('impression'))
       const clicksIndex = headers.findIndex((h: string) => h.includes('click'))
@@ -240,7 +240,7 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
               groupsInThisRow.add(groupName)
             }
           }
-          
+
           const words = extractWords(matchedProduct)
           words.forEach(word => {
             if (!stopWords.includes(word)) {
@@ -262,7 +262,7 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
               groupsInThisRow.add(groupName)
             }
           }
-          
+
           const words = extractWords(matchedProduct)
           words.forEach(word => {
             if (!stopWords.includes(word)) {
@@ -279,7 +279,7 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
             }
           })
         }
-        
+
         groupsInThisRow.forEach(groupName => {
           if (!wordToRows[groupName]) {
             wordToRows[groupName] = new Set()
@@ -292,7 +292,7 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
 
       for (const [word, rowIndices] of Object.entries(wordToRows)) {
         const rows: RowData[] = []
-        
+
         rowIndices.forEach(i => {
           const row = jsonData[i]
           rows.push({
@@ -313,12 +313,12 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
       }
 
       const stats: GroupStats[] = []
-      
+
       const allUniqueRows = new Set<number>()
       Object.values(wordToRows).forEach(rowSet => {
         rowSet.forEach(rowIndex => allUniqueRows.add(rowIndex))
       })
-      
+
       const totalRows: RowData[] = []
       allUniqueRows.forEach(i => {
         const row = jsonData[i]
@@ -332,7 +332,7 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
           cpc: parseNumber(row[cpcIndex])
         })
       })
-      
+
       const totalOccurrence = allUniqueRows.size
       const totalStats = calculateGroupStats('Total', totalRows, totalOccurrence)
       stats.push(totalStats)
@@ -344,7 +344,7 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
 
       const total = stats[0]
       const others = stats.slice(1).sort((a, b) => b.occurrence - a.occurrence)
-      
+
       setGroupedData([total, ...others])
       const threeDStatsResults: GroupStats[] = threeDKeywordGroups.map(group => {
         const rows: RowData[] = []
@@ -388,7 +388,7 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
     const spend = rows.reduce((sum, r) => sum + r.spend, 0)
     const orders = rows.reduce((sum, r) => sum + r.orders, 0)
     const sales = rows.reduce((sum, r) => sum + r.sales, 0)
-    
+
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0
     const cpc = clicks > 0 ? spend / clicks : 0
     const acos = sales > 0 ? (spend / sales) * 100 : 0
@@ -571,9 +571,11 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
             currentRow += negativeTerms.length + 1
 
             if (!clonedSheet['!cols']) clonedSheet['!cols'] = []
-            clonedSheet['!cols'][startCol] = { wch: Math.min(Math.max(
-              Math.max(...negativeTerms.map(term => term.length), 'Negative'.length) + 2, 15
-            ), 60) }
+            clonedSheet['!cols'][startCol] = {
+              wch: Math.min(Math.max(
+                Math.max(...negativeTerms.map(term => term.length), 'Negative'.length) + 2, 15
+              ), 60)
+            }
           }
         }
 
@@ -615,8 +617,16 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
       XLSX.utils.book_append_sheet(finalWorkbook, clonedSheet, sheetName.substring(0, 31))
     })
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19)
-    XLSX.writeFile(finalWorkbook, `tong_hop_phan_tich_${timestamp}.xlsx`)
+    // Lấy tên file dựa vào tên file gốc
+    let fileName = 'tong_hop_phan_tich.xlsx'
+    if (file) {
+      const originalFileName = file.name
+      // Loại bỏ phần mở rộng (.xlsx hoặc .xls)
+      const nameWithoutExt = originalFileName.replace(/\.(xlsx|xls)$/i, '')
+      fileName = `${nameWithoutExt}_phan_tich.xlsx`
+    }
+
+    XLSX.writeFile(finalWorkbook, fileName)
   }
 
   return (
@@ -627,9 +637,9 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
     }}>
       <div style={{ width: '100%', margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: '40px', color: 'white' }}>
-          <Link href="/" style={{ 
-            display: 'inline-block', 
-            marginBottom: '20px', 
+          <Link href="/" style={{
+            display: 'inline-block',
+            marginBottom: '20px',
             color: 'rgba(255,255,255,0.8)',
             textDecoration: 'none',
             fontSize: '14px'
@@ -701,7 +711,7 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
                   </svg>
                 </div>
               </div>
-              
+
               {file ? (
                 <div>
                   <p style={{ fontSize: '1.1rem', fontWeight: 600, color: '#667eea', marginBottom: '5px' }}>
@@ -727,7 +737,7 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
               type="file"
               accept=".xlsx,.xls"
               onChange={handleFileChange}
-              style={{ 
+              style={{
                 position: 'absolute',
                 width: '1px',
                 height: '1px',
@@ -1062,25 +1072,25 @@ const matchesThreeDGroup = (text: string, group: (typeof threeDKeywordGroups)[nu
                       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                       color: 'white'
                     }}>
-                      {['Từ khóa', 'Occurrence', 'Impressions', 'Clicks', 'CTR', 'Spend(USD)', 
+                      {['Từ khóa', 'Occurrence', 'Impressions', 'Clicks', 'CTR', 'Spend(USD)',
                         'Orders', 'Sales(USD)', 'CPC(USD)', 'ACOS', 'ROAS', 'Conversion rate'].map((header) => (
-                        <th key={header} style={{
-                          padding: '15px 12px',
-                          textAlign: 'left',
-                          fontWeight: 600,
-                          fontSize: '0.85rem',
-                          textTransform: 'uppercase'
-                        }}>
-                          {header}
-                        </th>
-                      ))}
+                          <th key={header} style={{
+                            padding: '15px 12px',
+                            textAlign: 'left',
+                            fontWeight: 600,
+                            fontSize: '0.85rem',
+                            textTransform: 'uppercase'
+                          }}>
+                            {header}
+                          </th>
+                        ))}
                     </tr>
                   </thead>
                   <tbody>
                     {groupedData.map((item, index) => (
-                      <tr 
+                      <tr
                         key={index}
-                        style={{ 
+                        style={{
                           background: index === 0 ? '#f9fafb' : 'white',
                           fontWeight: index === 0 ? 'bold' : 'normal',
                           borderBottom: '1px solid #e5e7eb',
