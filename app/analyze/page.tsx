@@ -776,7 +776,7 @@ export default function AnalyzePage() {
                       Chế độ đếm chính xác (Exact Match)
                     </div>
                     <div style={{ fontSize: '0.9rem', color: '#666', lineHeight: '1.6' }}>
-                      Đếm từ độc lập + nhóm đồng nghĩa. Ví dụ: "son" trong "my son" = đếm, "son" trong "grandson" = không đếm
+                      Đếm từ độc lập + nhóm đồng nghĩa. Ví dụ: &quot;son&quot; trong &quot;my son&quot; = đếm, &quot;son&quot; trong &quot;grandson&quot; = không đếm
                     </div>
                   </div>
                 </div>
@@ -1139,7 +1139,7 @@ export default function AnalyzePage() {
                 Nhóm từ đồng nghĩa
               </h4>
               <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8', fontSize: '0.9rem', color: '#666' }}>
-                <li><strong style={{ color: '#667eea' }}>fathers/father/father's/dad:</strong> father, fathers, dad, dads, father's, fathers'</li>
+                <li><strong style={{ color: '#667eea' }}>fathers/father/father&apos;s/dad:</strong> father, fathers, dad, dads, father&apos;s, fathers&apos;</li>
                 <li><strong style={{ color: '#667eea' }}>birthday:</strong> birthday, birthdays, birth</li>
                 <li><strong style={{ color: '#667eea' }}>dragon/dragons:</strong> dragon, dragons</li>
                 <li><strong style={{ color: '#667eea' }}>men/man/male:</strong> men, man, male</li>
@@ -1159,7 +1159,7 @@ export default function AnalyzePage() {
             }}>
               <div style={{ fontSize: '0.9rem', color: '#666', lineHeight: '1.6' }}>
                 <p>
-                  <strong style={{ color: '#10b981' }}>Exact Match:</strong> Vẫn dùng nhóm từ đồng nghĩa, nhưng chỉ đếm từ độc lập. Ví dụ: "son" trong "my son" = đếm vào nhóm "son", nhưng "son" trong "grandson" = không đếm
+                  <strong style={{ color: '#10b981' }}>Exact Match:</strong> Vẫn dùng nhóm từ đồng nghĩa, nhưng chỉ đếm từ độc lập. Ví dụ: &quot;son&quot; trong &quot;my son&quot; = đếm vào nhóm &quot;son&quot;, nhưng &quot;son&quot; trong &quot;grandson&quot; = không đếm
                 </p>
               </div>
             </div>
