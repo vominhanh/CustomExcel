@@ -74,6 +74,7 @@ export default function AnalyzePage() {
     'birthday': ['birthday', 'birthdays', 'birth'],
     'dragon/ dragons': ['dragon', 'dragons'],
     'men/ man/ male': ['men', 'man', 'male', 'mens', 'mans'],
+    'women/ woman/ lady': ['women', 'woman', 'lady', 'ladies'],
     'son': ['son', 'sons'],
     'brother': ['brother', 'brothers'],
     'anime': ['anime'],
@@ -94,6 +95,7 @@ export default function AnalyzePage() {
     'pop': ['pop', 'popup', 'pop-up'],
     'greeting': ['greeting', 'greetings'],
     'funny/ hilarious/ humor/ humorous/ fun/ sarcastic/ joke': ['funny', 'hilarious', 'humor', 'humorous', 'fun', 'sarcastic', 'joke', 'jokes', 'joking', 'humorously', 'funnily'],
+    'girl/ girls': ['girl', 'girls'],
     'kid/ kids/ child/ baby/ toddler': ['kid', 'kids', 'child', 'children', 'baby', 'babies', 'toddler', 'toddlers'],
   }
 
@@ -1210,6 +1212,7 @@ export default function AnalyzePage() {
                 <li><strong style={{ color: '#667eea' }}>birthday:</strong> birthday, birthdays, birth</li>
                 <li><strong style={{ color: '#667eea' }}>dragon/dragons:</strong> dragon, dragons</li>
                 <li><strong style={{ color: '#667eea' }}>men/man/male:</strong> men, man, male</li>
+                <li><strong style={{ color: '#667eea' }}>women/woman/lady:</strong> women, woman, lady, ladies</li>
                 <li><strong style={{ color: '#667eea' }}>son:</strong> son, sons</li>
                 <li><strong style={{ color: '#667eea' }}>brother:</strong> brother, brothers</li>
                 <li><strong style={{ color: '#667eea' }}>husband:</strong> husband, husbands, from wife</li>
@@ -1222,6 +1225,7 @@ export default function AnalyzePage() {
                 <li><strong style={{ color: '#667eea' }}>uncle/uncles:</strong> uncle, uncles</li>
                 <li><strong style={{ color: '#667eea' }}>grandmom/grandmother:</strong> grandmom, grandmoms, grandmother, grandmothers, grandma, grandmas, granny, grannies</li>
                 <li><strong style={{ color: '#667eea' }}>daughter/daughters:</strong> daughter, daughters</li>
+                <li><strong style={{ color: '#667eea' }}>girl/girls:</strong> girl, girls</li>
                 <li><strong style={{ color: '#667eea' }}>card:</strong> card, cards</li>
                 <li><strong style={{ color: '#667eea' }}>pop:</strong> pop, popup, pop-up</li>
                 <li><strong style={{ color: '#667eea' }}>dungeons:</strong> dungeon, dungeons, dnd</li>
