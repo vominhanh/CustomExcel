@@ -80,7 +80,16 @@ export default function AnalyzePage() {
     'dungeons': ['dungeon', 'dungeons', 'dnd'],
     'cool': ['cool'],
     'in law': ['inlaw', 'in-law'],
-    'husband/ from wife': ['husband', 'wife', 'husbands'],
+    'husband': ['husband', 'husbands', 'from wife'],
+    'wife': ['wife', 'wives', 'from husband'],
+    'mom/ mama/ mother/ mothers': ['mom', 'moms', 'mama', 'mamas', 'mother', 'mothers', 'mommy', 'mommies'],
+    'flower/ floral/ bouquet/ bloom': ['flower', 'flowers', 'floral', 'bouquet', 'bouquets', 'bloom', 'blooms', 'blossom', 'blossoms'],
+    'nasty/ naughty/ dirty': ['nasty', 'naughty', 'dirty', 'dirtier', 'dirtiest'],
+    'sister/ sis': ['sister', 'sisters', 'sis', 'sissy'],
+    'aunt/ auntie': ['aunt', 'aunts', 'auntie', 'aunties'],
+    'uncle/ uncles': ['uncle', 'uncles'],
+    'grandmom/ grandmother': ['grandmom', 'grandmoms', 'grandmother', 'grandmothers', 'grandma', 'grandmas', 'granny', 'grannies'],
+    'daughter/ daughters': ['daughter', 'daughters'],
     'card': ['card', 'cards'],
     'pop': ['pop', 'popup', 'pop-up'],
     'greeting': ['greeting', 'greetings'],
@@ -237,26 +246,67 @@ export default function AnalyzePage() {
         const groupsInThisRow = new Set<string>()
 
         if (exactMatch) {
-          // Kiểm tra các nhóm từ đồng nghĩa trước
+          // Tập hợp các từ đã được xử lý bởi cụm từ (để tránh đếm trùng)
+          const processedWords = new Set<string>()
+          const matchedGroups = new Set<string>()
+
+          // Bước 1: Kiểm tra các cụm từ trước (ưu tiên cao nhất)
           for (const [groupName, keywords] of Object.entries(synonymGroups)) {
-            // Kiểm tra xem có từ nào trong nhóm đồng nghĩa xuất hiện trong text không
-            if (keywords.some(k => isExactWord(matchedProduct, k))) {
-              groupsInThisRow.add(groupName)
+            // Kiểm tra các cụm từ (có khoảng trắng) trước
+            const phraseKeywords = keywords.filter(k => k.includes(' '))
+            for (const k of phraseKeywords) {
+              if (matchesKeyword(matchedProduct, k)) {
+                matchedGroups.add(groupName)
+                groupsInThisRow.add(groupName)
+                // Đánh dấu các từ trong cụm đã được xử lý
+                const phraseWords = k.toLowerCase().split(/\s+/)
+                phraseWords.forEach(w => {
+                  const normalized = normalizeWord(w)
+                  if (normalized && !stopWords.includes(w)) {
+                    processedWords.add(normalized)
+                  }
+                })
+                break
+              }
             }
           }
 
-          // Sau đó trích xuất các từ riêng lẻ và kiểm tra
+          // Bước 2: Kiểm tra các từ đơn (chỉ nếu nhóm chưa được match)
+          for (const [groupName, keywords] of Object.entries(synonymGroups)) {
+            if (matchedGroups.has(groupName)) continue // Bỏ qua nếu đã match cụm từ
+
+            const singleKeywords = keywords.filter(k => !k.includes(' '))
+            for (const k of singleKeywords) {
+              if (matchesKeyword(matchedProduct, k)) {
+                groupsInThisRow.add(groupName)
+                // Đánh dấu từ đó đã được xử lý
+                const normalized = normalizeWord(k)
+                if (normalized) {
+                  processedWords.add(normalized)
+                }
+                break // Chỉ cần một từ trong nhóm khớp là đủ
+              }
+            }
+          }
+
+          // Sau đó trích xuất các từ riêng lẻ và kiểm tra (chỉ các từ chưa được xử lý)
           const words = extractWords(matchedProduct)
           words.forEach(word => {
             if (!stopWords.includes(word)) {
+              const normalizedWord = normalizeWord(word)
+
+              // Bỏ qua nếu từ này đã được xử lý bởi cụm từ
+              if (processedWords.has(normalizedWord)) {
+                return
+              }
+
               let inSynonymGroup = false
               // Kiểm tra xem từ này có nằm trong nhóm đồng nghĩa nào không
               for (const [groupName, keywords] of Object.entries(synonymGroups)) {
-                // So sánh với tất cả các từ trong nhóm đồng nghĩa
+                // Chỉ kiểm tra các từ đơn (không phải cụm từ) để tránh trùng lặp
                 if (keywords.some(k => {
+                  if (k.includes(' ')) return false // Bỏ qua cụm từ
                   const normalizedK = normalizeWord(k)
-                  const normalizedWord = normalizeWord(word)
-                  // Chỉ so khớp chính xác để tránh nhầm lẫn
                   return normalizedK === normalizedWord
                 })) {
                   // Nếu từ này nằm trong nhóm đồng nghĩa, thêm nhóm vào (nếu chưa có)
@@ -269,7 +319,7 @@ export default function AnalyzePage() {
               }
               // Chỉ thêm từ riêng lẻ nếu nó không nằm trong nhóm đồng nghĩa nào
               if (!inSynonymGroup) {
-                groupsInThisRow.add(normalizeWord(word))
+                groupsInThisRow.add(normalizedWord)
               }
             }
           })
@@ -1162,6 +1212,16 @@ export default function AnalyzePage() {
                 <li><strong style={{ color: '#667eea' }}>men/man/male:</strong> men, man, male</li>
                 <li><strong style={{ color: '#667eea' }}>son:</strong> son, sons</li>
                 <li><strong style={{ color: '#667eea' }}>brother:</strong> brother, brothers</li>
+                <li><strong style={{ color: '#667eea' }}>husband:</strong> husband, husbands, from wife</li>
+                <li><strong style={{ color: '#667eea' }}>wife:</strong> wife, wives, from husband</li>
+                <li><strong style={{ color: '#667eea' }}>mom/mama/mother/mothers:</strong> mom, moms, mama, mamas, mother, mothers, mommy, mommies</li>
+                <li><strong style={{ color: '#667eea' }}>flower/floral/bouquet/bloom:</strong> flower, flowers, floral, bouquet, bouquets, bloom, blooms, blossom, blossoms</li>
+                <li><strong style={{ color: '#667eea' }}>nasty/naughty/dirty:</strong> nasty, naughty, dirty, dirtier, dirtiest</li>
+                <li><strong style={{ color: '#667eea' }}>sister/sis:</strong> sister, sisters, sis, sissy</li>
+                <li><strong style={{ color: '#667eea' }}>aunt/auntie:</strong> aunt, aunts, auntie, aunties</li>
+                <li><strong style={{ color: '#667eea' }}>uncle/uncles:</strong> uncle, uncles</li>
+                <li><strong style={{ color: '#667eea' }}>grandmom/grandmother:</strong> grandmom, grandmoms, grandmother, grandmothers, grandma, grandmas, granny, grannies</li>
+                <li><strong style={{ color: '#667eea' }}>daughter/daughters:</strong> daughter, daughters</li>
                 <li><strong style={{ color: '#667eea' }}>card:</strong> card, cards</li>
                 <li><strong style={{ color: '#667eea' }}>pop:</strong> pop, popup, pop-up</li>
                 <li><strong style={{ color: '#667eea' }}>dungeons:</strong> dungeon, dungeons, dnd</li>
