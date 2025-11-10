@@ -34,6 +34,11 @@ interface NegativeGroupMatch {
   terms: string[]
 }
 
+interface SynonymMatchDetail {
+  rows: Set<number>
+  synonyms: Map<string, { original: string, count: number }>
+}
+
 const threeDKeywordGroups = [
   { type: '3D', patterns: ['3d', '3-d', '3d card', '3-d card', '3d cards', '3-d cards'], exactWords: ['3d', '3-d'] },
   { type: 'Pop up', patterns: ['pop up', 'popup', 'pop-up', 'pop up card', 'popup card', 'pop-up card'], exactWords: ['pop', 'popup', 'pop-up'] },
@@ -225,6 +230,7 @@ export default function AnalyzePage() {
         acc[item.name] = new Set<string>()
         return acc
       }, {})
+      const groupMatchDetails: Record<string, SynonymMatchDetail> = {}
 
       for (let i = 1; i < jsonData.length; i++) {
         const row = jsonData[i]
@@ -246,21 +252,56 @@ export default function AnalyzePage() {
         })
 
         const groupsInThisRow = new Set<string>()
+        const rowSynonymMatches: Record<string, Set<string>> = {}
+
+        const registerSynonymGroupMatch = (groupName: string, keyword: string) => {
+          groupsInThisRow.add(groupName)
+
+          const normalizedKey = normalizeWord(keyword)
+          if (!normalizedKey) {
+            return
+          }
+
+          if (!groupMatchDetails[groupName]) {
+            groupMatchDetails[groupName] = {
+              rows: new Set<number>(),
+              synonyms: new Map<string, { original: string, count: number }>()
+            }
+          }
+
+          const detail = groupMatchDetails[groupName]
+          detail.rows.add(i)
+
+          if (!rowSynonymMatches[groupName]) {
+            rowSynonymMatches[groupName] = new Set<string>()
+          }
+
+          if (rowSynonymMatches[groupName].has(normalizedKey)) {
+            return
+          }
+
+          rowSynonymMatches[groupName].add(normalizedKey)
+
+          const existing = detail.synonyms.get(normalizedKey)
+          if (existing) {
+            existing.count += 1
+          } else {
+            detail.synonyms.set(normalizedKey, {
+              original: keyword,
+              count: 1
+            })
+          }
+        }
 
         if (exactMatch) {
-          // Tập hợp các từ đã được xử lý bởi cụm từ (để tránh đếm trùng)
           const processedWords = new Set<string>()
-          const matchedGroups = new Set<string>()
 
-          // Bước 1: Kiểm tra các cụm từ trước (ưu tiên cao nhất)
+          // Ưu tiên kiểm tra các cụm từ trước
           for (const [groupName, keywords] of Object.entries(synonymGroups)) {
-            // Kiểm tra các cụm từ (có khoảng trắng) trước
             const phraseKeywords = keywords.filter(k => k.includes(' '))
-            for (const k of phraseKeywords) {
+            phraseKeywords.forEach(k => {
               if (matchesKeyword(matchedProduct, k)) {
-                matchedGroups.add(groupName)
-                groupsInThisRow.add(groupName)
-                // Đánh dấu các từ trong cụm đã được xử lý
+                registerSynonymGroupMatch(groupName, k)
                 const phraseWords = k.toLowerCase().split(/\s+/)
                 phraseWords.forEach(w => {
                   const normalized = normalizeWord(w)
@@ -268,76 +309,66 @@ export default function AnalyzePage() {
                     processedWords.add(normalized)
                   }
                 })
-                break
               }
-            }
+            })
           }
 
-          // Bước 2: Kiểm tra các từ đơn (chỉ nếu nhóm chưa được match)
+          // Sau đó kiểm tra các từ đơn trong nhóm đồng nghĩa
           for (const [groupName, keywords] of Object.entries(synonymGroups)) {
-            if (matchedGroups.has(groupName)) continue // Bỏ qua nếu đã match cụm từ
-
             const singleKeywords = keywords.filter(k => !k.includes(' '))
-            for (const k of singleKeywords) {
+            singleKeywords.forEach(k => {
               if (matchesKeyword(matchedProduct, k)) {
-                groupsInThisRow.add(groupName)
-                // Đánh dấu từ đó đã được xử lý
+                registerSynonymGroupMatch(groupName, k)
                 const normalized = normalizeWord(k)
                 if (normalized) {
                   processedWords.add(normalized)
                 }
-                break // Chỉ cần một từ trong nhóm khớp là đủ
               }
-            }
+            })
           }
 
-          // Sau đó trích xuất các từ riêng lẻ và kiểm tra (chỉ các từ chưa được xử lý)
+          // Cuối cùng xử lý các từ còn lại (không thuộc nhóm đồng nghĩa)
           const words = extractWords(matchedProduct)
           words.forEach(word => {
             if (!stopWords.includes(word)) {
               const normalizedWord = normalizeWord(word)
-
-              // Bỏ qua nếu từ này đã được xử lý bởi cụm từ
-              if (processedWords.has(normalizedWord)) {
+              if (!normalizedWord || processedWords.has(normalizedWord)) {
                 return
               }
 
-              let inSynonymGroup = false
-              // Kiểm tra xem từ này có nằm trong nhóm đồng nghĩa nào không
+              let matchedSynonymGroup = false
               for (const [groupName, keywords] of Object.entries(synonymGroups)) {
-                // Chỉ kiểm tra các từ đơn (không phải cụm từ) để tránh trùng lặp
-                if (keywords.some(k => {
-                  if (k.includes(' ')) return false // Bỏ qua cụm từ
-                  const normalizedK = normalizeWord(k)
-                  return normalizedK === normalizedWord
-                })) {
-                  // Nếu từ này nằm trong nhóm đồng nghĩa, thêm nhóm vào (nếu chưa có)
-                  if (!groupsInThisRow.has(groupName)) {
-                    groupsInThisRow.add(groupName)
-                  }
-                  inSynonymGroup = true
+                const matchedKeyword = keywords.find(k => !k.includes(' ') && normalizeWord(k) === normalizedWord)
+                if (matchedKeyword) {
+                  registerSynonymGroupMatch(groupName, matchedKeyword)
+                  processedWords.add(normalizedWord)
+                  matchedSynonymGroup = true
                   break
                 }
               }
-              // Chỉ thêm từ riêng lẻ nếu nó không nằm trong nhóm đồng nghĩa nào
-              if (!inSynonymGroup) {
+
+              if (!matchedSynonymGroup) {
                 groupsInThisRow.add(normalizedWord)
               }
             }
           })
         } else {
           for (const [groupName, keywords] of Object.entries(synonymGroups)) {
-            if (keywords.some(k => matchedProduct.includes(k.toLowerCase()))) {
-              groupsInThisRow.add(groupName)
-            }
+            keywords.forEach(k => {
+              if (matchesKeyword(matchedProduct, k)) {
+                registerSynonymGroupMatch(groupName, k)
+              }
+            })
           }
 
           const words = extractWords(matchedProduct)
           words.forEach(word => {
             if (!stopWords.includes(word)) {
               let inSynonymGroup = false
-              for (const [, keywords] of Object.entries(synonymGroups)) {
-                if (keywords.some(k => normalizeWord(k) === normalizeWord(word) || word.includes(normalizeWord(k)))) {
+              for (const [groupName, keywords] of Object.entries(synonymGroups)) {
+                const matchedKeyword = keywords.find(k => normalizeWord(k) === normalizeWord(word) || word.includes(normalizeWord(k)))
+                if (matchedKeyword) {
+                  registerSynonymGroupMatch(groupName, matchedKeyword)
                   inSynonymGroup = true
                   break
                 }
@@ -407,7 +438,8 @@ export default function AnalyzePage() {
       stats.push(totalStats)
 
       for (const [groupName, data] of Object.entries(groups)) {
-        const groupStats = calculateGroupStats(groupName, data.rows, data.occurrence)
+        const displayName = buildSynonymGroupLabel(groupName, synonymGroups, groupMatchDetails)
+        const groupStats = calculateGroupStats(displayName, data.rows, data.occurrence)
         stats.push(groupStats)
       }
 
@@ -478,6 +510,57 @@ export default function AnalyzePage() {
       roas,
       conversionRate
     }
+  }
+
+  const buildSynonymGroupLabel = (
+    groupName: string,
+    synonymGroupsMap: { [key: string]: string[] },
+    matchDetails: Record<string, SynonymMatchDetail>
+  ): string => {
+    const synonyms = synonymGroupsMap[groupName]
+    if (!synonyms) {
+      return groupName
+    }
+
+    const detail = matchDetails[groupName]
+    if (!detail) {
+      return groupName
+    }
+
+    const matchedEntries = Array.from(detail.synonyms.entries())
+      .map(([normalized, info]) => {
+        const orderIndex = synonyms.findIndex(s => normalizeWord(s) === normalized)
+        return {
+          normalized,
+          original: info.original,
+          count: info.count,
+          orderIndex
+        }
+      })
+      .filter(item => item.orderIndex !== -1)
+
+    if (matchedEntries.length === 0) {
+      return groupName
+    }
+
+    matchedEntries.sort((a, b) => {
+      if (b.count !== a.count) {
+        return b.count - a.count
+      }
+      return a.orderIndex - b.orderIndex
+    })
+
+    const seen = new Set<string>()
+    const displayNames: string[] = []
+    matchedEntries.forEach(item => {
+      if (seen.has(item.normalized)) {
+        return
+      }
+      seen.add(item.normalized)
+      displayNames.push(item.original)
+    })
+
+    return displayNames.join('/')
   }
 
   const downloadResults = async () => {
