@@ -84,6 +84,8 @@ export default function AnalyzePage() {
     'card': ['card', 'cards'],
     'pop': ['pop', 'popup', 'pop-up'],
     'greeting': ['greeting', 'greetings'],
+    'funny/ hilarious/ humor/ humorous/ fun/ sarcastic/ joke': ['funny', 'hilarious', 'humor', 'humorous', 'fun', 'sarcastic', 'joke', 'jokes', 'joking', 'humorously', 'funnily'],
+    'kid/ kids/ child/ baby/ toddler': ['kid', 'kids', 'child', 'children', 'baby', 'babies', 'toddler', 'toddlers'],
   }
 
   const stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'up', 'out', 'is', 'are', 'was', 'were', '3d', '3-d']
@@ -235,22 +237,37 @@ export default function AnalyzePage() {
         const groupsInThisRow = new Set<string>()
 
         if (exactMatch) {
+          // Kiểm tra các nhóm từ đồng nghĩa trước
           for (const [groupName, keywords] of Object.entries(synonymGroups)) {
+            // Kiểm tra xem có từ nào trong nhóm đồng nghĩa xuất hiện trong text không
             if (keywords.some(k => isExactWord(matchedProduct, k))) {
               groupsInThisRow.add(groupName)
             }
           }
 
+          // Sau đó trích xuất các từ riêng lẻ và kiểm tra
           const words = extractWords(matchedProduct)
           words.forEach(word => {
             if (!stopWords.includes(word)) {
               let inSynonymGroup = false
-              for (const [, keywords] of Object.entries(synonymGroups)) {
-                if (keywords.some(k => normalizeWord(k) === normalizeWord(word))) {
+              // Kiểm tra xem từ này có nằm trong nhóm đồng nghĩa nào không
+              for (const [groupName, keywords] of Object.entries(synonymGroups)) {
+                // So sánh với tất cả các từ trong nhóm đồng nghĩa
+                if (keywords.some(k => {
+                  const normalizedK = normalizeWord(k)
+                  const normalizedWord = normalizeWord(word)
+                  // Chỉ so khớp chính xác để tránh nhầm lẫn
+                  return normalizedK === normalizedWord
+                })) {
+                  // Nếu từ này nằm trong nhóm đồng nghĩa, thêm nhóm vào (nếu chưa có)
+                  if (!groupsInThisRow.has(groupName)) {
+                    groupsInThisRow.add(groupName)
+                  }
                   inSynonymGroup = true
                   break
                 }
               }
+              // Chỉ thêm từ riêng lẻ nếu nó không nằm trong nhóm đồng nghĩa nào
               if (!inSynonymGroup) {
                 groupsInThisRow.add(normalizeWord(word))
               }
@@ -1148,6 +1165,8 @@ export default function AnalyzePage() {
                 <li><strong style={{ color: '#667eea' }}>card:</strong> card, cards</li>
                 <li><strong style={{ color: '#667eea' }}>pop:</strong> pop, popup, pop-up</li>
                 <li><strong style={{ color: '#667eea' }}>dungeons:</strong> dungeon, dungeons, dnd</li>
+                <li><strong style={{ color: '#667eea' }}>funny/hilarious/humor/humorous/fun/sarcastic/joke:</strong> funny, hilarious, humor, humorous, fun, sarcastic, joke, jokes</li>
+                <li><strong style={{ color: '#667eea' }}>kid/kids/child/baby/toddler:</strong> kid, kids, child, children, baby, babies, toddler, toddlers</li>
               </ul>
             </div>
 
