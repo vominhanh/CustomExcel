@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import Link from 'next/link'
 
@@ -39,6 +39,19 @@ interface SynonymMatchDetail {
   synonyms: Map<string, { original: string, count: number }>
 }
 
+type SearchCategory = 'keyword' | 'threeD' | 'negative'
+
+interface SearchResult {
+  title: string
+  items: string[]
+}
+
+interface SearchData {
+  keywordTerms: string[]
+  threeD: Record<string, string[]>
+  negative: Record<string, string[]>
+}
+
 const threeDKeywordGroups = [
   { type: '3D', patterns: ['3d', '3-d', '3d card', '3-d card', '3d cards', '3-d cards'], exactWords: ['3d', '3-d'] },
   { type: 'Pop up', patterns: ['pop up', 'popup', 'pop-up', 'pop up card', 'popup card', 'pop-up card'], exactWords: ['pop', 'popup', 'pop-up'] },
@@ -60,6 +73,12 @@ const negativeKeywordGroups = [
   }
 ]
 
+const POP_UP_EXCLUDE_PATTERNS = [/\blove\s*pop\b/i, /\blovepop\b/i]
+
+const shouldExcludePopUpTerm = (term: string): boolean => {
+  return POP_UP_EXCLUDE_PATTERNS.some(pattern => pattern.test(term))
+}
+
 export default function AnalyzePage() {
   const [file, setFile] = useState<File | null>(null)
   const [processing, setProcessing] = useState(false)
@@ -71,40 +90,79 @@ export default function AnalyzePage() {
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [searchCategory, setSearchCategory] = useState<SearchCategory>('keyword')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [searchPerformed, setSearchPerformed] = useState(false)
+  const [searchData, setSearchData] = useState<SearchData>({ keywordTerms: [], threeD: {}, negative: {} })
+  const [synonymGroups, setSynonymGroups] = useState<Record<string, string[]>>({})
+  const [matchedSynonymGroups, setMatchedSynonymGroups] = useState<Array<{ label: string, synonyms: string[] }>>([])
+  const [synonymsLoading, setSynonymsLoading] = useState(true)
+
   // Luôn sử dụng Exact Match
   const exactMatch = true
 
-  const synonymGroups: { [key: string]: string[] } = {
-    'fathers/ father/ father\'s/ dad': ['father', 'fathers', 'dad', 'dads', 'father\'s', 'fathers\'', 'fathersday', 'dadday'],
-    'birthday': ['birthday', 'birthdays', 'birth'],
-    'dragon/ dragons': ['dragon', 'dragons'],
-    'men/ man/ male': ['men', 'man', 'male', 'mens', 'mans'],
-    'women/ woman/ lady': ['women', 'woman', 'lady', 'ladies'],
-    'son': ['son', 'sons'],
-    'brother': ['brother', 'brothers'],
-    'anime': ['anime'],
-    'dungeons': ['dungeon', 'dungeons', 'dnd'],
-    'cool': ['cool'],
-    'in law': ['inlaw', 'in-law'],
-    'husband': ['husband', 'husbands', 'from wife'],
-    'wife': ['wife', 'wives', 'from husband'],
-    'mom/ mama/ mother/ mothers': ['mom', 'moms', 'mama', 'mamas', 'mother', 'mothers', 'mommy', 'mommies'],
-    'flower/ floral/ bouquet/ bloom': ['flower', 'flowers', 'floral', 'bouquet', 'bouquets', 'bloom', 'blooms', 'blossom', 'blossoms'],
-    'nasty/ naughty/ dirty': ['nasty', 'naughty', 'dirty', 'dirtier', 'dirtiest'],
-    'sister/ sis': ['sister', 'sisters', 'sis', 'sissy'],
-    'aunt/ auntie': ['aunt', 'aunts', 'auntie', 'aunties'],
-    'uncle/ uncles': ['uncle', 'uncles'],
-    'grandmom/ grandmother': ['grandmom', 'grandmoms', 'grandmother', 'grandmothers', 'grandma', 'grandmas', 'granny', 'grannies'],
-    'daughter/ daughters': ['daughter', 'daughters'],
-    'card': ['card', 'cards'],
-    'pop': ['pop', 'popup', 'pop-up'],
-    'greeting': ['greeting', 'greetings'],
-    'funny/ hilarious/ humor/ humorous/ fun/ sarcastic/ joke': ['funny', 'hilarious', 'humor', 'humorous', 'fun', 'sarcastic', 'joke', 'jokes', 'joking', 'humorously', 'funnily'],
-    'girl/ girls': ['girl', 'girls'],
-    'kid/ kids/ child/ baby/ toddler': ['kid', 'kids', 'child', 'children', 'baby', 'babies', 'toddler', 'toddlers'],
+  const parseSynonymText = (content: string): Record<string, string[]> => {
+    const groups: Record<string, string[]> = {}
+    const lines = content.split(/\r?\n/)
+
+    lines.forEach(rawLine => {
+      const line = rawLine.trim()
+      if (!line) return
+
+      const separatorIndex = line.indexOf(':')
+      if (separatorIndex === -1) return
+
+      const key = line.slice(0, separatorIndex).trim()
+      const valuesPart = line.slice(separatorIndex + 1).trim()
+      if (!key || !valuesPart) return
+
+      if (groups[key]) {
+        return
+      }
+
+      const synonyms = valuesPart
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean)
+
+      if (!groups[key]) {
+        groups[key] = []
+      }
+
+      synonyms.forEach(synonym => {
+        if (!groups[key].includes(synonym)) {
+          groups[key].push(synonym)
+        }
+      })
+    })
+
+    return groups
   }
 
+  useEffect(() => {
+    const fetchSynonyms = async () => {
+      try {
+        const response = await fetch('/dongnghia.txt')
+        if (!response.ok) {
+          throw new Error('Failed to load dongnghia.txt')
+        }
+        const text = await response.text()
+        const parsed = parseSynonymText(text)
+        setSynonymGroups(parsed)
+      } catch (err) {
+        console.error('Error reading synonym groups:', err)
+        setError(prev => prev ?? 'Không đọc được file dongnghia.txt! Hãy đặt file trong thư mục public.')
+      } finally {
+        setSynonymsLoading(false)
+      }
+    }
+
+    fetchSynonyms()
+  }, [])
+
   const stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'up', 'out', 'is', 'are', 'was', 'were', '3d', '3-d']
+  const popKeywords = new Set(['pop', 'popup'])
 
   const normalizeWord = (word: string): string => {
     return word.toLowerCase().trim().replace(/[^a-z0-9]/g, '')
@@ -160,6 +218,10 @@ export default function AnalyzePage() {
         setNegativeMatches([])
         setOriginalWorkbook(null)
         setAnalysisSheetName('')
+        setSearchResults([])
+        setSearchPerformed(false)
+        setSearchData({ keywordTerms: [], threeD: {}, negative: {} })
+        setMatchedSynonymGroups([])
         console.log('File accepted:', selectedFile.name)
       } else {
         setError('Vui lòng chọn file Excel (.xlsx hoặc .xls)')
@@ -180,14 +242,63 @@ export default function AnalyzePage() {
     return 0
   }
 
+  const handleKeywordSearch = () => {
+    const rawQuery = searchQuery.trim()
+    const query = rawQuery.toLowerCase()
+    let results: SearchResult[] = []
+
+    if (searchCategory === 'keyword') {
+      if (query === '') {
+        setSearchResults([])
+        setSearchPerformed(true)
+        return
+      }
+
+      const matchedTerms = searchData.keywordTerms.filter(term => term.toLowerCase() === query)
+
+      if (matchedTerms.length > 0) {
+        results.push({
+          title: `Kết quả bằng "${rawQuery}"`,
+          items: matchedTerms
+        })
+      }
+    } else if (searchCategory === 'threeD') {
+      results = Object.entries(searchData.threeD)
+        .filter(([, items]) => items.length > 0)
+        .map(([title, items]) => ({ title, items }))
+    } else {
+      results = Object.entries(searchData.negative)
+        .filter(([, items]) => items.length > 0)
+        .map(([title, items]) => ({ title, items }))
+    }
+
+    results.sort((a, b) => a.title.localeCompare(b.title))
+
+    setSearchResults(results)
+    setSearchPerformed(true)
+  }
+
+  const totalSearchItems = searchResults.reduce((sum, result) => sum + result.items.length, 0)
+
   const analyzeFile = async () => {
     if (!file) {
       setError('Vui lòng chọn file Excel!')
       return
     }
 
+    if (synonymsLoading) {
+      setError('Đang tải danh sách từ đồng nghĩa, vui lòng thử lại sau!')
+      return
+    }
+
+    if (Object.keys(synonymGroups).length === 0) {
+      setError('Không tìm thấy dữ liệu từ đồng nghĩa. Đảm bảo file dongnghia.txt nằm trong thư mục public!')
+      return
+    }
+
     setProcessing(true)
     setError(null)
+    setMatchedSynonymGroups([])
 
     try {
       const arrayBuffer = await file.arrayBuffer()
@@ -226,22 +337,36 @@ export default function AnalyzePage() {
         acc[item.type] = new Set<number>()
         return acc
       }, {})
+      const threeDMatchedTerms = threeDKeywordGroups.reduce<Record<string, Set<string>>>((acc, item) => {
+        acc[item.type] = new Set<string>()
+        return acc
+      }, {})
       const negativeKeywordTerms = negativeKeywordGroups.reduce<Record<string, Set<string>>>((acc, item) => {
         acc[item.name] = new Set<string>()
         return acc
       }, {})
       const groupMatchDetails: Record<string, SynonymMatchDetail> = {}
+      const groupMatchedTerms: Record<string, Set<string>> = {}
+      const allMatchedTerms = new Set<string>()
 
       for (let i = 1; i < jsonData.length; i++) {
         const row = jsonData[i]
         if (!row || row.length === 0) continue
 
-        const matchedProduct = String(row[matchedProductIndex] || '').toLowerCase().trim()
+        const originalMatchedProduct = String(row[matchedProductIndex] || '').trim()
+        const matchedProduct = originalMatchedProduct.toLowerCase()
         if (!matchedProduct) continue
+
+        if (originalMatchedProduct) {
+          allMatchedTerms.add(originalMatchedProduct)
+        }
 
         threeDKeywordGroups.forEach(group => {
           if (matchesThreeDGroup(matchedProduct, group, isExactWord)) {
-            threeDTypeRows[group.type].add(i)
+            if (!(group.type.toLowerCase().includes('pop') && shouldExcludePopUpTerm(originalMatchedProduct))) {
+              threeDTypeRows[group.type].add(i)
+              threeDMatchedTerms[group.type].add(originalMatchedProduct)
+            }
           }
         })
 
@@ -254,7 +379,11 @@ export default function AnalyzePage() {
         const groupsInThisRow = new Set<string>()
         const rowSynonymMatches: Record<string, Set<string>> = {}
 
-        const registerSynonymGroupMatch = (groupName: string, keyword: string) => {
+        const registerSynonymGroupMatch = (groupName: string, keyword: string, matchedTerm: string) => {
+          if (groupName.toLowerCase().includes('pop') && shouldExcludePopUpTerm(matchedTerm)) {
+            return
+          }
+
           groupsInThisRow.add(groupName)
 
           const normalizedKey = normalizeWord(keyword)
@@ -268,6 +397,11 @@ export default function AnalyzePage() {
               synonyms: new Map<string, { original: string, count: number }>()
             }
           }
+
+          if (!groupMatchedTerms[groupName]) {
+            groupMatchedTerms[groupName] = new Set<string>()
+          }
+          groupMatchedTerms[groupName].add(matchedTerm)
 
           const detail = groupMatchDetails[groupName]
           detail.rows.add(i)
@@ -301,7 +435,7 @@ export default function AnalyzePage() {
             const phraseKeywords = keywords.filter(k => k.includes(' '))
             phraseKeywords.forEach(k => {
               if (matchesKeyword(matchedProduct, k)) {
-                registerSynonymGroupMatch(groupName, k)
+                registerSynonymGroupMatch(groupName, k, originalMatchedProduct)
                 const phraseWords = k.toLowerCase().split(/\s+/)
                 phraseWords.forEach(w => {
                   const normalized = normalizeWord(w)
@@ -318,7 +452,7 @@ export default function AnalyzePage() {
             const singleKeywords = keywords.filter(k => !k.includes(' '))
             singleKeywords.forEach(k => {
               if (matchesKeyword(matchedProduct, k)) {
-                registerSynonymGroupMatch(groupName, k)
+                registerSynonymGroupMatch(groupName, k, originalMatchedProduct)
                 const normalized = normalizeWord(k)
                 if (normalized) {
                   processedWords.add(normalized)
@@ -335,12 +469,15 @@ export default function AnalyzePage() {
               if (!normalizedWord || processedWords.has(normalizedWord)) {
                 return
               }
+              if (popKeywords.has(normalizedWord)) {
+                return
+              }
 
               let matchedSynonymGroup = false
               for (const [groupName, keywords] of Object.entries(synonymGroups)) {
                 const matchedKeyword = keywords.find(k => !k.includes(' ') && normalizeWord(k) === normalizedWord)
                 if (matchedKeyword) {
-                  registerSynonymGroupMatch(groupName, matchedKeyword)
+                  registerSynonymGroupMatch(groupName, matchedKeyword, originalMatchedProduct)
                   processedWords.add(normalizedWord)
                   matchedSynonymGroup = true
                   break
@@ -348,7 +485,12 @@ export default function AnalyzePage() {
               }
 
               if (!matchedSynonymGroup) {
-                groupsInThisRow.add(normalizedWord)
+                const normalized = normalizeWord(word)
+                groupsInThisRow.add(normalized)
+                if (!groupMatchedTerms[normalized]) {
+                  groupMatchedTerms[normalized] = new Set<string>()
+                }
+                groupMatchedTerms[normalized].add(originalMatchedProduct)
               }
             }
           })
@@ -356,7 +498,7 @@ export default function AnalyzePage() {
           for (const [groupName, keywords] of Object.entries(synonymGroups)) {
             keywords.forEach(k => {
               if (matchesKeyword(matchedProduct, k)) {
-                registerSynonymGroupMatch(groupName, k)
+                registerSynonymGroupMatch(groupName, k, originalMatchedProduct)
               }
             })
           }
@@ -364,17 +506,26 @@ export default function AnalyzePage() {
           const words = extractWords(matchedProduct)
           words.forEach(word => {
             if (!stopWords.includes(word)) {
+              const normalizedWord = normalizeWord(word)
+              if (!normalizedWord || popKeywords.has(normalizedWord)) {
+                return
+              }
+
               let inSynonymGroup = false
               for (const [groupName, keywords] of Object.entries(synonymGroups)) {
-                const matchedKeyword = keywords.find(k => normalizeWord(k) === normalizeWord(word) || word.includes(normalizeWord(k)))
+                const matchedKeyword = keywords.find(k => normalizeWord(k) === normalizedWord || word.includes(normalizeWord(k)))
                 if (matchedKeyword) {
-                  registerSynonymGroupMatch(groupName, matchedKeyword)
+                  registerSynonymGroupMatch(groupName, matchedKeyword, originalMatchedProduct)
                   inSynonymGroup = true
                   break
                 }
               }
               if (!inSynonymGroup) {
-                groupsInThisRow.add(normalizeWord(word))
+                groupsInThisRow.add(normalizedWord)
+                if (!groupMatchedTerms[normalizedWord]) {
+                  groupMatchedTerms[normalizedWord] = new Set<string>()
+                }
+                groupMatchedTerms[normalizedWord].add(originalMatchedProduct)
               }
             }
           })
@@ -439,7 +590,8 @@ export default function AnalyzePage() {
 
       for (const [groupName, data] of Object.entries(groups)) {
         const displayName = buildSynonymGroupLabel(groupName, synonymGroups, groupMatchDetails)
-        const groupStats = calculateGroupStats(displayName, data.rows, data.occurrence)
+        const occurrenceCount = groupMatchedTerms[groupName]?.size ?? data.occurrence
+        const groupStats = calculateGroupStats(displayName, data.rows, occurrenceCount)
         stats.push(groupStats)
       }
 
@@ -447,6 +599,20 @@ export default function AnalyzePage() {
       const others = stats.slice(1).sort((a, b) => b.occurrence - a.occurrence)
 
       setGroupedData([total, ...others])
+      const matchedGroupsList = Object.keys(groupMatchDetails)
+        .filter(groupName => synonymGroups[groupName])
+        .map(groupName => ({
+          label: buildSynonymGroupLabel(groupName, synonymGroups, groupMatchDetails),
+          synonyms: synonymGroups[groupName]
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label))
+      const uniqueMatchedGroups = matchedGroupsList.reduce<Array<{ label: string, synonyms: string[] }>>((acc, item) => {
+        if (!acc.find(existing => existing.label === item.label)) {
+          acc.push(item)
+        }
+        return acc
+      }, [])
+      setMatchedSynonymGroups(uniqueMatchedGroups)
       const threeDStatsResults: GroupStats[] = threeDKeywordGroups.map(group => {
         const rows: RowData[] = []
         threeDTypeRows[group.type].forEach(index => {
@@ -461,7 +627,8 @@ export default function AnalyzePage() {
             cpc: parseNumber(row[cpcIndex])
           })
         })
-        return calculateGroupStats(group.type, rows, rows.length)
+        const occurrenceCount = threeDMatchedTerms[group.type]?.size ?? rows.length
+        return calculateGroupStats(group.type, rows, occurrenceCount)
       })
       setThreeDStats(threeDStatsResults)
 
@@ -475,6 +642,28 @@ export default function AnalyzePage() {
         .filter(item => item.terms.length > 0)
 
       setNegativeMatches(negativeResults)
+
+      const threeDSearchData: Record<string, string[]> = {}
+      Object.entries(threeDMatchedTerms).forEach(([groupName, terms]) => {
+        if (terms.size === 0) return
+        threeDSearchData[groupName] = Array.from(terms).sort((a, b) => a.localeCompare(b))
+      })
+
+      const negativeSearchData: Record<string, string[]> = {}
+      Object.entries(negativeKeywordTerms).forEach(([groupName, terms]) => {
+        if (terms.size === 0) return
+        negativeSearchData[groupName] = Array.from(terms).sort((a, b) => a.localeCompare(b))
+      })
+
+      const keywordTerms = Array.from(allMatchedTerms)
+        .filter(term => term.length > 0)
+        .sort((a, b) => a.localeCompare(b))
+
+      setSearchData({
+        keywordTerms,
+        threeD: threeDSearchData,
+        negative: negativeSearchData
+      })
       setProcessing(false)
     } catch (err) {
       console.error('Error analyzing file:', err)
@@ -781,6 +970,8 @@ export default function AnalyzePage() {
     XLSX.writeFile(finalWorkbook, fileName)
   }
 
+  const analyzeDisabled = processing || synonymsLoading
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -937,16 +1128,16 @@ export default function AnalyzePage() {
               <div style={{ textAlign: 'center', marginTop: '25px' }}>
                 <button
                   onClick={analyzeFile}
-                  disabled={processing}
+                  disabled={analyzeDisabled}
                   style={{
                     padding: '15px 40px',
-                    background: processing ? '#9ca3af' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    background: analyzeDisabled ? '#9ca3af' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                     color: 'white',
                     border: 'none',
                     borderRadius: '10px',
                     fontSize: '1.1rem',
                     fontWeight: 600,
-                    cursor: processing ? 'not-allowed' : 'pointer',
+                    cursor: analyzeDisabled ? 'not-allowed' : 'pointer',
                     boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
                     transition: 'all 0.3s ease',
                     display: 'inline-flex',
@@ -954,7 +1145,7 @@ export default function AnalyzePage() {
                     gap: '10px'
                   }}
                   onMouseEnter={(e) => {
-                    if (!processing) {
+                    if (!analyzeDisabled) {
                       e.currentTarget.style.transform = 'translateY(-2px)'
                       e.currentTarget.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.6)'
                     }
@@ -981,6 +1172,11 @@ export default function AnalyzePage() {
                     </>
                   )}
                 </button>
+                {synonymsLoading && (
+                  <p style={{ marginTop: '12px', color: '#6b7280', fontSize: '0.9rem' }}>
+                    Đang tải danh sách từ đồng nghĩa từ file /dongnghia.txt...
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -998,6 +1194,156 @@ export default function AnalyzePage() {
               {error}
             </div>
           )}
+
+          <div style={{
+            marginTop: '30px',
+            padding: '24px',
+            borderRadius: '16px',
+            background: 'linear-gradient(135deg, #eef2ff 0%, #f8fafc 100%)',
+            border: '1px solid #c7d2fe'
+          }}>
+            <h3 style={{ margin: 0, marginBottom: '16px', fontSize: '1.3rem', color: '#4338ca', fontWeight: 700 }}>
+              Tra cứu nhóm từ
+            </h3>
+            <p style={{ margin: 0, marginBottom: '16px', color: '#4c51bf', fontSize: '0.9rem' }}>
+              Nhập từ khóa hoặc chọn nhóm để xem nhanh danh sách nhóm đồng nghĩa. Với nhóm 3D và Negative, bấm Tìm kiếm sẽ hiển thị toàn bộ từ trong nhóm.
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleKeywordSearch()
+                  }
+                }}
+                placeholder="Nhập từ khóa (ví dụ: father, pop, gift...)"
+                style={{
+                  flex: '1 1 240px',
+                  minWidth: '200px',
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  border: '1px solid #a5b4fc',
+                  fontSize: '0.95rem',
+                  background: 'white',
+                  color: '#1f2937'
+                }}
+              />
+              <select
+                value={searchCategory}
+                onChange={(e) => setSearchCategory(e.target.value as SearchCategory)}
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  border: '1px solid #a5b4fc',
+                  fontSize: '0.95rem',
+                  background: 'white',
+                  color: '#1f2937'
+                }}
+              >
+                <option value="keyword">Nhập từ tìm kiếm</option>
+                <option value="threeD">Nhóm 3D</option>
+                <option value="negative">Nhóm Negative</option>
+              </select>
+              <button
+                onClick={handleKeywordSearch}
+                style={{
+                  padding: '12px 24px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                  color: 'white',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(99, 102, 241, 0.35)',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-1px)'
+                  e.currentTarget.style.boxShadow = '0 6px 18px rgba(99, 102, 241, 0.45)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)'
+                  e.currentTarget.style.boxShadow = '0 4px 14px rgba(99, 102, 241, 0.35)'
+                }}
+              >
+                Tìm kiếm
+              </button>
+            </div>
+
+            {searchPerformed && searchResults.length === 0 && (
+              <div style={{
+                marginTop: '16px',
+                padding: '12px 16px',
+                borderRadius: '10px',
+                background: '#eef2ff',
+                color: '#4338ca',
+                fontSize: '0.9rem'
+              }}>
+                {searchCategory === 'keyword' && searchQuery.trim() === ''
+                  ? 'Vui lòng nhập từ khóa trước khi tìm kiếm.'
+                  : 'Không tìm thấy kết quả phù hợp.'}
+              </div>
+            )}
+
+            {searchResults.length > 0 && (
+              <div style={{
+                marginTop: '18px',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                background: '#e0e7ff',
+                color: '#3730a3',
+                fontSize: '0.9rem',
+                fontWeight: 600
+              }}>
+                Tổng số thẻ hiển thị: {totalSearchItems}
+              </div>
+            )}
+
+            {searchResults.length > 0 && (
+              <div style={{
+                marginTop: '20px',
+                display: 'grid',
+                gap: '16px'
+              }}>
+                {searchResults.map(result => (
+                  <div
+                    key={result.title}
+                    style={{
+                      background: 'white',
+                      borderRadius: '12px',
+                      padding: '16px',
+                      border: '1px solid #e0e7ff',
+                      boxShadow: '0 2px 8px rgba(99, 102, 241, 0.05)'
+                    }}
+                  >
+                    <h4 style={{ margin: 0, marginBottom: '10px', color: '#4338ca', fontSize: '1rem', fontWeight: 600 }}>
+                      {result.title} <span style={{ color: '#6366f1', fontSize: '0.85rem' }}>({result.items.length})</span>
+                    </h4>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {result.items.map(item => (
+                        <span
+                          key={item}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '9999px',
+                            background: '#ede9fe',
+                            color: '#5b21b6',
+                            fontSize: '0.85rem',
+                            fontWeight: 500
+                          }}
+                        >
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {threeDStats.length > 0 && (
             <div style={{ marginTop: '30px' }}>
@@ -1280,42 +1626,38 @@ export default function AnalyzePage() {
           )}
 
           <div style={{ marginTop: '40px' }}>
-            <div style={{
-              background: 'linear-gradient(135deg, #eff6ff 0%, #e0e7ff 100%)',
-              borderLeft: '4px solid #3b82f6',
-              padding: '20px',
-              borderRadius: '10px',
-              marginBottom: '20px'
-            }}>
-              <h4 style={{ fontWeight: 600, marginBottom: '15px', color: '#333', fontSize: '1.1rem' }}>
-                Nhóm từ đồng nghĩa
-              </h4>
-              <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8', fontSize: '0.9rem', color: '#666' }}>
-                <li><strong style={{ color: '#667eea' }}>fathers/father/father&apos;s/dad:</strong> father, fathers, dad, dads, father&apos;s, fathers&apos;</li>
-                <li><strong style={{ color: '#667eea' }}>birthday:</strong> birthday, birthdays, birth</li>
-                <li><strong style={{ color: '#667eea' }}>dragon/dragons:</strong> dragon, dragons</li>
-                <li><strong style={{ color: '#667eea' }}>men/man/male:</strong> men, man, male</li>
-                <li><strong style={{ color: '#667eea' }}>women/woman/lady:</strong> women, woman, lady, ladies</li>
-                <li><strong style={{ color: '#667eea' }}>son:</strong> son, sons</li>
-                <li><strong style={{ color: '#667eea' }}>brother:</strong> brother, brothers</li>
-                <li><strong style={{ color: '#667eea' }}>husband:</strong> husband, husbands, from wife</li>
-                <li><strong style={{ color: '#667eea' }}>wife:</strong> wife, wives, from husband</li>
-                <li><strong style={{ color: '#667eea' }}>mom/mama/mother/mothers:</strong> mom, moms, mama, mamas, mother, mothers, mommy, mommies</li>
-                <li><strong style={{ color: '#667eea' }}>flower/floral/bouquet/bloom:</strong> flower, flowers, floral, bouquet, bouquets, bloom, blooms, blossom, blossoms</li>
-                <li><strong style={{ color: '#667eea' }}>nasty/naughty/dirty:</strong> nasty, naughty, dirty, dirtier, dirtiest</li>
-                <li><strong style={{ color: '#667eea' }}>sister/sis:</strong> sister, sisters, sis, sissy</li>
-                <li><strong style={{ color: '#667eea' }}>aunt/auntie:</strong> aunt, aunts, auntie, aunties</li>
-                <li><strong style={{ color: '#667eea' }}>uncle/uncles:</strong> uncle, uncles</li>
-                <li><strong style={{ color: '#667eea' }}>grandmom/grandmother:</strong> grandmom, grandmoms, grandmother, grandmothers, grandma, grandmas, granny, grannies</li>
-                <li><strong style={{ color: '#667eea' }}>daughter/daughters:</strong> daughter, daughters</li>
-                <li><strong style={{ color: '#667eea' }}>girl/girls:</strong> girl, girls</li>
-                <li><strong style={{ color: '#667eea' }}>card:</strong> card, cards</li>
-                <li><strong style={{ color: '#667eea' }}>pop:</strong> pop, popup, pop-up</li>
-                <li><strong style={{ color: '#667eea' }}>dungeons:</strong> dungeon, dungeons, dnd</li>
-                <li><strong style={{ color: '#667eea' }}>funny/hilarious/humor/humorous/fun/sarcastic/joke:</strong> funny, hilarious, humor, humorous, fun, sarcastic, joke, jokes</li>
-                <li><strong style={{ color: '#667eea' }}>kid/kids/child/baby/toddler:</strong> kid, kids, child, children, baby, babies, toddler, toddlers</li>
-              </ul>
-            </div>
+            {matchedSynonymGroups.length > 0 && (
+              <div style={{
+                background: 'linear-gradient(135deg, #eff6ff 0%, #e0e7ff 100%)',
+                borderLeft: '4px solid #3b82f6',
+                padding: '20px',
+                borderRadius: '10px',
+                marginBottom: '20px'
+              }}>
+                <h4 style={{ fontWeight: 600, marginBottom: '15px', color: '#333', fontSize: '1.1rem' }}>
+                  Nhóm từ đồng nghĩa xuất hiện trong file Excel
+                </h4>
+                <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8', fontSize: '0.9rem', color: '#666' }}>
+                  {matchedSynonymGroups.map(group => (
+                    <li key={group.label}>
+                      <strong style={{ color: '#667eea' }}>{group.label}:</strong> {group.synonyms.join(', ')}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {matchedSynonymGroups.length === 0 && groupedData.length > 0 && (
+              <div style={{
+                background: '#eef2ff',
+                borderRadius: '10px',
+                padding: '16px',
+                color: '#4c51bf',
+                fontSize: '0.9rem',
+                marginBottom: '20px'
+              }}>
+                Chưa có nhóm từ đồng nghĩa nào khớp với dữ liệu trong file Excel này.
+              </div>
+            )}
 
             <div style={{
               background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
