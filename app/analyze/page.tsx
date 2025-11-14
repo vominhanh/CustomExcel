@@ -168,13 +168,44 @@ export default function AnalyzePage() {
     return word.toLowerCase().trim().replace(/[^a-z0-9]/g, '')
   }
 
+  const getWordVariants = (word: string): string[] => {
+    const variants = new Set<string>([word.toLowerCase()])
+    const base = word.toLowerCase().trim()
+
+    // Thêm số nhiều
+    if (base.endsWith('y')) {
+      variants.add(base.slice(0, -1) + 'ies')
+    } else if (base.endsWith('s') || base.endsWith('x') || base.endsWith('z') || base.endsWith('ch') || base.endsWith('sh')) {
+      variants.add(base + 'es')
+    } else {
+      variants.add(base + 's')
+    }
+
+    // Thêm sở hữu cách
+    variants.add(base + "'s")
+    variants.add(base + "'")
+
+    // Nếu có số nhiều, thêm sở hữu cách cho số nhiều
+    const plural = base.endsWith('y') ? base.slice(0, -1) + 'ies' :
+      (base.endsWith('s') || base.endsWith('x') || base.endsWith('z') || base.endsWith('ch') || base.endsWith('sh')) ? base + 'es' : base + 's'
+    variants.add(plural + "'s")
+    variants.add(plural + "'")
+
+    return Array.from(variants)
+  }
+
   const isExactWord = (text: string, word: string): boolean => {
-    const regex = new RegExp(`\\b${word}\\b`, 'i')
+    // Escape các ký tự đặc biệt trong từ
+    const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    // Sử dụng word boundary để đảm bảo chỉ match với từ đơn, không match với từ ghép
+    // \b đảm bảo match ở ranh giới giữa word character và non-word character
+    const regex = new RegExp(`\\b${escapedWord}\\b`, 'i')
     return regex.test(text)
   }
 
   const matchesKeyword = (text: string, keyword: string): boolean => {
     if (keyword.includes(' ')) {
+      // Xử lý cụm từ
       const escapedParts = keyword
         .split(/\s+/)
         .map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
@@ -182,7 +213,26 @@ export default function AnalyzePage() {
       const phraseRegex = new RegExp(`\\b${escapedParts}\\b`, 'i')
       return phraseRegex.test(text)
     }
-    return isExactWord(text, keyword)
+
+    // Kiểm tra từ gốc - chỉ match với từ đơn, không match với từ ghép
+    if (isExactWord(text, keyword)) {
+      return true
+    }
+
+    // Kiểm tra các biến thể (số nhiều, sở hữu cách) - chỉ match với từ đơn
+    const variants = getWordVariants(keyword)
+    for (const variant of variants) {
+      if (variant !== keyword.toLowerCase()) {
+        // Escape variant trước khi kiểm tra
+        const escapedVariant = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const variantRegex = new RegExp(`\\b${escapedVariant}\\b`, 'i')
+        if (variantRegex.test(text)) {
+          return true
+        }
+      }
+    }
+
+    return false
   }
 
   const extractWords = (text: string): string[] => {
@@ -254,11 +304,13 @@ export default function AnalyzePage() {
         return
       }
 
-      const matchedTerms = searchData.keywordTerms.filter(term => term.toLowerCase() === query)
+      const matchedTerms = searchData.keywordTerms.filter(term =>
+        term.toLowerCase().includes(query)
+      )
 
       if (matchedTerms.length > 0) {
         results.push({
-          title: `Kết quả bằng "${rawQuery}"`,
+          title: `Kết quả chứa "${rawQuery}"`,
           items: matchedTerms
         })
       }
@@ -333,6 +385,7 @@ export default function AnalyzePage() {
       const cpcIndex = headers.findIndex((h: string) => h.includes('cpc'))
 
       const wordToRows: { [key: string]: Set<number> } = {}
+      const wordToOriginalWords: { [key: string]: Set<string> } = {}
       const threeDTypeRows = threeDKeywordGroups.reduce<Record<string, Set<number>>>((acc, item) => {
         acc[item.type] = new Set<number>()
         return acc
@@ -475,7 +528,11 @@ export default function AnalyzePage() {
 
               let matchedSynonymGroup = false
               for (const [groupName, keywords] of Object.entries(synonymGroups)) {
-                const matchedKeyword = keywords.find(k => !k.includes(' ') && normalizeWord(k) === normalizedWord)
+                const matchedKeyword = keywords.find(k => {
+                  if (k.includes(' ')) return false
+                  // Sử dụng matchesKeyword để kiểm tra cả biến thể
+                  return matchesKeyword(originalMatchedProduct, k)
+                })
                 if (matchedKeyword) {
                   registerSynonymGroupMatch(groupName, matchedKeyword, originalMatchedProduct)
                   processedWords.add(normalizedWord)
@@ -491,6 +548,11 @@ export default function AnalyzePage() {
                   groupMatchedTerms[normalized] = new Set<string>()
                 }
                 groupMatchedTerms[normalized].add(originalMatchedProduct)
+                // Lưu từ gốc để hiển thị đúng
+                if (!wordToOriginalWords[normalized]) {
+                  wordToOriginalWords[normalized] = new Set<string>()
+                }
+                wordToOriginalWords[normalized].add(word)
               }
             }
           })
@@ -513,7 +575,13 @@ export default function AnalyzePage() {
 
               let inSynonymGroup = false
               for (const [groupName, keywords] of Object.entries(synonymGroups)) {
-                const matchedKeyword = keywords.find(k => normalizeWord(k) === normalizedWord || word.includes(normalizeWord(k)))
+                const matchedKeyword = keywords.find(k => {
+                  if (k.includes(' ')) {
+                    return matchesKeyword(originalMatchedProduct, k)
+                  }
+                  // Sử dụng matchesKeyword để kiểm tra cả biến thể
+                  return matchesKeyword(originalMatchedProduct, k)
+                })
                 if (matchedKeyword) {
                   registerSynonymGroupMatch(groupName, matchedKeyword, originalMatchedProduct)
                   inSynonymGroup = true
@@ -526,6 +594,11 @@ export default function AnalyzePage() {
                   groupMatchedTerms[normalizedWord] = new Set<string>()
                 }
                 groupMatchedTerms[normalizedWord].add(originalMatchedProduct)
+                // Lưu từ gốc để hiển thị đúng
+                if (!wordToOriginalWords[normalizedWord]) {
+                  wordToOriginalWords[normalizedWord] = new Set<string>()
+                }
+                wordToOriginalWords[normalizedWord].add(word)
               }
             }
           })
@@ -588,10 +661,84 @@ export default function AnalyzePage() {
       const totalStats = calculateGroupStats('Total', totalRows, totalOccurrence)
       stats.push(totalStats)
 
+      // Gộp các nhóm có cùng base word lại với nhau
+      const mergedGroups: { [key: string]: { rows: RowData[], occurrence: number, originalNames: string[] } } = {}
+
       for (const [groupName, data] of Object.entries(groups)) {
-        const displayName = buildSynonymGroupLabel(groupName, synonymGroups, groupMatchDetails)
-        const occurrenceCount = groupMatchedTerms[groupName]?.size ?? data.occurrence
-        const groupStats = calculateGroupStats(displayName, data.rows, occurrenceCount)
+        // Kiểm tra xem có phải là nhóm đồng nghĩa không
+        if (synonymGroups[groupName]) {
+          // Nếu là nhóm đồng nghĩa, xử lý bình thường
+          const displayName = buildSynonymGroupLabel(groupName, synonymGroups, groupMatchDetails)
+          const occurrenceCount = groupMatchedTerms[groupName]?.size ?? data.occurrence
+          const groupStats = calculateGroupStats(displayName, data.rows, occurrenceCount)
+          stats.push(groupStats)
+        } else {
+          // Nếu không phải nhóm đồng nghĩa, gộp theo base word
+          const base = getBaseWord(groupName)
+          if (!mergedGroups[base]) {
+            mergedGroups[base] = {
+              rows: [],
+              occurrence: 0,
+              originalNames: []
+            }
+          }
+          mergedGroups[base].rows.push(...data.rows)
+          mergedGroups[base].occurrence += data.occurrence
+          // Sử dụng từ gốc từ wordToOriginalWords nếu có, nếu không thì dùng groupName
+          const originalWords = wordToOriginalWords[groupName]
+          if (originalWords && originalWords.size > 0) {
+            originalWords.forEach(origWord => {
+              if (!mergedGroups[base].originalNames.includes(origWord)) {
+                mergedGroups[base].originalNames.push(origWord)
+              }
+            })
+          } else {
+            mergedGroups[base].originalNames.push(groupName)
+          }
+        }
+      }
+
+      // Xử lý các nhóm đã gộp
+      for (const [baseWord, mergedData] of Object.entries(mergedGroups)) {
+        // Sắp xếp các tên gốc: số ít trước, số nhiều sau, rồi sở hữu cách
+        mergedData.originalNames.sort((a, b) => {
+          const aLower = a.toLowerCase()
+          const bLower = b.toLowerCase()
+          const aHasApostrophe = aLower.includes("'")
+          const bHasApostrophe = bLower.includes("'")
+
+          if (aHasApostrophe && !bHasApostrophe) return 1
+          if (!aHasApostrophe && bHasApostrophe) return -1
+
+          if (!aHasApostrophe && !bHasApostrophe) {
+            const aIsPlural = aLower.endsWith('s') && aLower.length > 1
+            const bIsPlural = bLower.endsWith('s') && bLower.length > 1
+            if (aIsPlural && !bIsPlural) return 1
+            if (!aIsPlural && bIsPlural) return -1
+          }
+
+          return a.localeCompare(b)
+        })
+
+        const displayName = mergedData.originalNames.length > 1
+          ? mergedData.originalNames.join('/')
+          : mergedData.originalNames[0]
+
+        // Loại bỏ duplicate rows nhưng vẫn giữ tất cả các rows để tính toán đúng
+        const uniqueRows = mergedData.rows.reduce((acc, row) => {
+          const key = row.matchedProduct
+          if (!acc.has(key)) {
+            acc.set(key, row)
+          }
+          return acc
+        }, new Map<string, RowData>())
+
+        const uniqueRowsArray = Array.from(uniqueRows.values())
+        // Tính occurrence dựa trên số dòng unique thực tế
+        // Vì các biến thể có thể xuất hiện ở cùng một dòng
+        const occurrenceCount = uniqueRowsArray.length
+
+        const groupStats = calculateGroupStats(displayName, uniqueRowsArray, occurrenceCount)
         stats.push(groupStats)
       }
 
@@ -701,6 +848,26 @@ export default function AnalyzePage() {
     }
   }
 
+  const getBaseWord = (word: string): string => {
+    // Loại bỏ dấu nháy đơn và 's' ở cuối để lấy từ gốc
+    let base = word.toLowerCase().trim()
+    if (base.endsWith("'s") || base.endsWith("'")) {
+      base = base.replace(/['s]+$/, '')
+    }
+    // Loại bỏ 's' ở cuối nếu là số nhiều
+    if (base.endsWith('s') && base.length > 1) {
+      // Kiểm tra các trường hợp đặc biệt
+      if (base.endsWith('ies')) {
+        base = base.slice(0, -3) + 'y'
+      } else if (base.endsWith('es') && (base.endsWith('ches') || base.endsWith('shes') || base.endsWith('xes') || base.endsWith('zes'))) {
+        base = base.slice(0, -2)
+      } else if (base.length > 1 && !base.endsWith('ss')) {
+        base = base.slice(0, -1)
+      }
+    }
+    return base
+  }
+
   const buildSynonymGroupLabel = (
     groupName: string,
     synonymGroupsMap: { [key: string]: string[] },
@@ -732,24 +899,74 @@ export default function AnalyzePage() {
       return groupName
     }
 
-    matchedEntries.sort((a, b) => {
-      if (b.count !== a.count) {
-        return b.count - a.count
-      }
-      return a.orderIndex - b.orderIndex
-    })
+    // Nhóm các biến thể theo từ gốc
+    const baseWordGroups = new Map<string, Array<{ original: string, count: number, orderIndex: number }>>()
 
-    const seen = new Set<string>()
-    const displayNames: string[] = []
     matchedEntries.forEach(item => {
-      if (seen.has(item.normalized)) {
-        return
+      const base = getBaseWord(item.original)
+      if (!baseWordGroups.has(base)) {
+        baseWordGroups.set(base, [])
       }
-      seen.add(item.normalized)
-      displayNames.push(item.original)
+      baseWordGroups.get(base)!.push(item)
     })
 
-    return displayNames.join('/')
+    // Sắp xếp các nhóm theo số lần xuất hiện và thứ tự
+    const sortedGroups = Array.from(baseWordGroups.entries())
+      .map(([base, variants]) => {
+        const totalCount = variants.reduce((sum, v) => sum + v.count, 0)
+        const minOrderIndex = Math.min(...variants.map(v => v.orderIndex))
+        return {
+          base,
+          variants: variants.sort((a, b) => {
+            if (b.count !== a.count) return b.count - a.count
+            return a.orderIndex - b.orderIndex
+          }),
+          totalCount,
+          minOrderIndex
+        }
+      })
+      .sort((a, b) => {
+        if (b.totalCount !== a.totalCount) return b.totalCount - a.totalCount
+        return a.minOrderIndex - b.minOrderIndex
+      })
+
+    // Tạo nhãn hiển thị: nhóm các biến thể của cùng từ gốc lại
+    const displayParts: string[] = []
+    sortedGroups.forEach(group => {
+      const variantStrings = group.variants.map(v => v.original)
+      // Loại bỏ trùng lặp nhưng giữ thứ tự
+      const uniqueVariants = Array.from(new Set(variantStrings))
+
+      // Sắp xếp: số ít trước, số nhiều sau, rồi sở hữu cách
+      uniqueVariants.sort((a, b) => {
+        const aLower = a.toLowerCase()
+        const bLower = b.toLowerCase()
+        const aHasApostrophe = aLower.includes("'")
+        const bHasApostrophe = bLower.includes("'")
+
+        // Sở hữu cách xếp sau
+        if (aHasApostrophe && !bHasApostrophe) return 1
+        if (!aHasApostrophe && bHasApostrophe) return -1
+
+        // Trong cùng loại, số ít trước số nhiều
+        if (!aHasApostrophe && !bHasApostrophe) {
+          const aIsPlural = aLower.endsWith('s') && aLower.length > 1
+          const bIsPlural = bLower.endsWith('s') && bLower.length > 1
+          if (aIsPlural && !bIsPlural) return 1
+          if (!aIsPlural && bIsPlural) return -1
+        }
+
+        return a.localeCompare(b)
+      })
+
+      if (uniqueVariants.length > 1) {
+        displayParts.push(uniqueVariants.join('/'))
+      } else {
+        displayParts.push(uniqueVariants[0])
+      }
+    })
+
+    return displayParts.join('/')
   }
 
   const downloadResults = async () => {
@@ -1243,7 +1460,7 @@ export default function AnalyzePage() {
                   color: '#1f2937'
                 }}
               >
-                <option value="keyword">Nhập từ tìm kiếm</option>
+                <option value="keyword">Tìm kiếm từ khóa</option>
                 <option value="threeD">Nhóm 3D</option>
                 <option value="negative">Nhóm Negative</option>
               </select>
