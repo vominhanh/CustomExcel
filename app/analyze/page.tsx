@@ -79,6 +79,23 @@ const shouldExcludePopUpTerm = (term: string): boolean => {
   return POP_UP_EXCLUDE_PATTERNS.some(pattern => pattern.test(term))
 }
 
+// Kiểm tra xem một từ có chứa "from" hay không (loại trừ khi đếm)
+const shouldExcludeFromTerm = (term: string, keyword: string): boolean => {
+  const termLower = term.toLowerCase()
+  const keywordLower = keyword.toLowerCase()
+
+  // Nếu từ khóa trong dữ liệu có chứa "from"
+  if (termLower.includes('from')) {
+    // Nếu từ đồng nghĩa cũng có chứa "from" (như "from husband", "from wife") thì vẫn đếm
+    if (keywordLower.includes('from')) {
+      return false
+    }
+    // Nếu từ đồng nghĩa không có "from" (như "mom" khớp với "from mom") thì không đếm
+    return true
+  }
+  return false
+}
+
 export default function AnalyzePage() {
   const [file, setFile] = useState<File | null>(null)
   const [processing, setProcessing] = useState(false)
@@ -437,6 +454,11 @@ export default function AnalyzePage() {
             return
           }
 
+          // Loại trừ các từ có "from" (trừ khi từ đồng nghĩa cũng có "from")
+          if (shouldExcludeFromTerm(matchedTerm, keyword)) {
+            return
+          }
+
           groupsInThisRow.add(groupName)
 
           const normalizedKey = normalizeWord(keyword)
@@ -455,6 +477,14 @@ export default function AnalyzePage() {
             groupMatchedTerms[groupName] = new Set<string>()
           }
           groupMatchedTerms[groupName].add(matchedTerm)
+
+          if (groupName === 'wife') {
+            console.log('[wife-match]', {
+              keyword,
+              matchedTerm,
+              totalUniqueMatches: groupMatchedTerms[groupName].size
+            })
+          }
 
           const detail = groupMatchDetails[groupName]
           detail.rows.add(i)
@@ -542,6 +572,10 @@ export default function AnalyzePage() {
               }
 
               if (!matchedSynonymGroup) {
+                // Loại trừ các từ có "from" khi đếm từ đơn lẻ
+                if (originalMatchedProduct.toLowerCase().includes('from')) {
+                  return
+                }
                 const normalized = normalizeWord(word)
                 groupsInThisRow.add(normalized)
                 if (!groupMatchedTerms[normalized]) {
@@ -589,6 +623,10 @@ export default function AnalyzePage() {
                 }
               }
               if (!inSynonymGroup) {
+                // Loại trừ các từ có "from" khi đếm từ đơn lẻ
+                if (originalMatchedProduct.toLowerCase().includes('from')) {
+                  return
+                }
                 groupsInThisRow.add(normalizedWord)
                 if (!groupMatchedTerms[normalizedWord]) {
                   groupMatchedTerms[normalizedWord] = new Set<string>()

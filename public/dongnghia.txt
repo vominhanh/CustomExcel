@@ -13,55 +13,108 @@ valentine: valentine, valentines, valentine's
 
 anniversary: anniversary, anniversaries, wedding anniversary
 
-holiday: holiday, holidays, vacation, break
+holiday: holiday, holidays
 
-us: us
-children: children
-brother and sister: brother and sister
-son & dad: son & dad, son and dad
-parents: parents
-family: family
+merry: merry
 
-cat: cat, cats, kitten, kitty, feline
+mom: mom, mother, mothers, mom's, mother's, mothers', stepmother, mama, mommy, mummy, momma, mamma, ma, mum, mums
 
-kid: kid, kids, child, baby, toddler, children, childrens, children's, youngster
+sister: sister, sisters
 
-birthday: birthday, birthdays, bday, birth day
+friend: friend, friends
 
-fish: fish, fishes, marine, aquatic
+tree: tree, trees
 
-dragon: dragon, dragons
+in law: in law, in-law, inlaw, anything containing law
 
-cheerful: cheerful, cheery
-
-joyful: joyful, joyous, gleeful
-
-fun: fun, funny, funs, funnies, fun's, funny's, funs', funnies'
-
-helper: helper, assistant, supporter
-
-team: team, group
-
-halloween: halloween
-pumpkin: pumpkin
-trick or treat: trick or treat
-
-thank you: thanks, thank, thankful, gratitude
-
-mother: mother, mom, mum, mothers, mother's, mothers', stepmother, mama, mommy, mummy, momma, mamma, ma
-
-girl: girl, girls, female child, young woman
-
-daughter: daughter, daughters
-
-father: father, fathers, dad, dads, papa, papas, father's, fathers'
-
-uncle: uncle, uncles, uncle figure
+flower: flower, flowers, floral, bouquet, bouquets
 
 aunt: aunt, aunts, auntie
 
-grandchild: grandchild, grandkids, grand children
+wife: wife, wives, from husband
 
-grandparent: grandparent, grandparents, elder
+grandma: grandma, grandmother, nana, granny, gran, grandmothers
 
-parenthood: parenthood, fatherhood, motherhood
+girlfriend: girlfriend, girlfriends
+
+daughter: daughter, daughters
+
+granddaughter: granddaughter, granddaughters, grand daughter
+
+son: son, sons
+
+dad: dad, father, daddy, fathers, dads, papa, papas, father's, fathers'
+
+bird: bird, birds, anything related to bird
+
+red: red
+
+parents: parents, mom and dad
+
+cardinal: cardinal, cardinals
+
+angel: angel, angels
+
+husband: husband, husbands, from wife
+
+poinsettia: poinsettia, poinsettias
+
+brother: brother, brothers
+
+family: family
+
+brother and sister: brother and sister, brothers and sisters, sister and brother, sisters and brothers
+
+grandparents: grandparents
+
+grandson: grandson, grandsons
+
+kid: kid, kids, child, baby, toddler, children, childrens, children's, youngster
+
+popup: pop up, popup, 3d, 3-d, 3 d, pop-up
+
+fun: fun, funny, funs, funnies, fun's, funny's, funs', funnies', humor, humorous, anything related to funny
+
+car: car, cars
+
+boy: boy, boys
+
+him: him
+
+for her: for her, to her, gift for her, valentine for her
+
+birthday: birthday, birthdays, bday, birth-day, birth day, anything related to birthday
+
+men: men, mens, man
+
+boyfriend: boyfriend, boy friend, boy-friend, boyfriends
+
+women: women, woman, from man, from men
+
+cute: cute
+
+galentine: galentine, galentines, galentine's
+
+love: love
+
+dog: dog, dogs, doggy, puppy, puppies, anything related to dogs
+
+niece: niece, nieces
+
+cat: cat, cats, kitten, kitty, feline, anything related to cats
+
+grandkid: grandkid, grandkids, grandchild, grandchildren, grand kid, grand kids, grand child, grand children
+
+romantic: romantic, anything related to romantic
+
+adult: adult, anything related to adult
+
+toddler: toddler, toddlers, baby, babies
+
+dirty: dirty, naughty, sexy, adult, rude, inappropriate
+
+nephew: nephew, nephews
+
+truck: truck, trucks
+
+dinosaur: dinosaur, dino, anything related to dinosaur
