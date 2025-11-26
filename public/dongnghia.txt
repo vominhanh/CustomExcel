@@ -117,4 +117,4 @@ nephew: nephew, nephews
 
 truck: truck, trucks
 
-dinosaur: dinosaur, dino, anything related to dinosaur
+dinosaur: dinosaur, dino,dinosaurs, dino-like

@@ -1,0 +1,28 @@
+mom or mother or mothers or mom's or mother's or mama or mommy or mum or mums or stepmother but not from mom or from mother or from mothers or from mom's or from mother's or from mama or from mommy or from mum or from mums or from stepmother
+parents or "mom and dad" but not from parents or from mom and dad
+dad or dads or father or fathers or daddy or papa but not from dad or from dads or from father or from fathers or from daddy or from papa
+friend or friends but not from friend or from friends
+sister or sisters but not from sister or from sisters or brother or brothers
+brother or brothers but not from brother or from brothers or sister or sisters
+aunt or aunts or auntie but not from aunt or from aunts or from auntie
+uncle or uncles but not from uncle or from uncles
+wife or wives or from husband but not from wife
+husband or husbands or from wife but not from husband
+girlfriend or girlfriends but not from girlfriend or from girlfriends
+boyfriend or boy friend or boy-friend or boyfriends but not from boyfriend
+daughter or daughters but not from daughter or from daughters or grand daughter or granddaughter or in law or in-law or inlaw
+granddaughter or granddaughters or grand daughter but not from granddaughter or from granddaughters or from grand daughter
+son or sons but not from son or from sons or grandson or grandsons or grand son or grand sons
+grandson or grandsons or grand son or grand sons but not from grandson or from grandsons or from grand son or from grand sons
+grandma or grandmas or grandmother or grandmothers or granny or gran or nana but not from grandma or from grandmas or from grandmother or from grandmothers or from granny or from gran or from nana
+grandparent or grandparents but not from grandparent or from grandparents
+grandkid or grandkids or grand kid or grand kids or grandchild or grandchildren or grand child or grand children but not from grandkid or from grandkids or from grand kid or from grand kids or from grandchild or from grandchildren or from grand child or from grand children
+niece or nieces or nice but not from niece or from nieces
+nephew or nephews but not from nephew or from nephews
+kid or kids or child or children or youngster but not from kid or from kids or from child or from children
+boy or boys but not from boy or from boys
+him but not from him
+men or men's or man but not from men or from man
+women or woman or from man or from men but not from women or from woman
+her or "for her" or "to her" or "gift for her" or "valentine for her" but not from her
+baby or babies or toddler or toddlers but not from baby or from babies or from toddler or from toddlers

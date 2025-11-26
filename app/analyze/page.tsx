@@ -75,26 +75,52 @@ const negativeKeywordGroups = [
 
 const POP_UP_EXCLUDE_PATTERNS = [/\blove\s*pop\b/i, /\blovepop\b/i]
 
+const normalizeWord = (word: string): string => {
+  return word.toLowerCase().trim().replace(/[^a-z0-9]/g, '')
+}
+
 const shouldExcludePopUpTerm = (term: string): boolean => {
   return POP_UP_EXCLUDE_PATTERNS.some(pattern => pattern.test(term))
 }
 
-// Kiểm tra xem một từ có chứa "from" hay không (loại trừ khi đếm)
-const shouldExcludeFromTerm = (term: string, keyword: string): boolean => {
+// Kiểm tra xem matched term có chứa bất kỳ cụm cần loại bỏ không
+const shouldExcludeFromTerm = (
+  groupName: string,
+  keyword: string,
+  term: string,
+  specialRules: Record<string, string[]>
+): boolean => {
   const termLower = term.toLowerCase()
   const keywordLower = keyword.toLowerCase()
+  const canonicalGroup = normalizeWord(groupName)
 
-  // Nếu từ khóa trong dữ liệu có chứa "from"
-  if (termLower.includes('from')) {
-    // Nếu từ đồng nghĩa cũng có chứa "from" (như "from husband", "from wife") thì vẫn đếm
-    if (keywordLower.includes('from')) {
+  if (!canonicalGroup) {
+    return false
+  }
+
+  const groupExclusions = specialRules[canonicalGroup]
+  if (!groupExclusions || groupExclusions.length === 0) {
+    return false
+  }
+
+  return groupExclusions.some(exclusion => {
+    const normalizedExclusion = exclusion.toLowerCase()
+    if (!normalizedExclusion) {
       return false
     }
-    // Nếu từ đồng nghĩa không có "from" (như "mom" khớp với "from mom") thì không đếm
+
+    if (!termLower.includes(normalizedExclusion)) {
+      return false
+    }
+
+    if (keywordLower.includes(normalizedExclusion)) {
+      return false
+    }
+
     return true
-  }
-  return false
+  })
 }
+
 
 export default function AnalyzePage() {
   const [file, setFile] = useState<File | null>(null)
@@ -115,6 +141,8 @@ export default function AnalyzePage() {
   const [synonymGroups, setSynonymGroups] = useState<Record<string, string[]>>({})
   const [matchedSynonymGroups, setMatchedSynonymGroups] = useState<Array<{ label: string, synonyms: string[] }>>([])
   const [synonymsLoading, setSynonymsLoading] = useState(true)
+  const [specialExclusionRules, setSpecialExclusionRules] = useState<Record<string, string[]>>({})
+  const [specialExclusionsLoading, setSpecialExclusionsLoading] = useState(true)
 
   // Luôn sử dụng Exact Match
   const exactMatch = true
@@ -157,6 +185,55 @@ export default function AnalyzePage() {
     return groups
   }
 
+  const splitSpecialTerms = (segment: string): string[] => {
+    return segment
+      .split(/,| nor | or |\/|;|\||\+/i)
+      .map(term => term.trim())
+      .map(term => term.replace(/^["']|["']$/g, '').replace(/^'|'$/g, ''))
+      .filter(term => term.length > 0)
+  }
+
+  const parseSpecialExclusionText = (content: string): Record<string, string[]> => {
+    const rules: Record<string, string[]> = {}
+    const lines = content.split(/\r?\n/)
+
+    lines.forEach(rawLine => {
+      const line = rawLine.trim()
+      if (!line || line.startsWith('#')) {
+        return
+      }
+
+      const lowerLine = line.toLowerCase()
+      const separatorIndex = lowerLine.indexOf('but not')
+      if (separatorIndex === -1) {
+        return
+      }
+
+      const includePart = line.slice(0, separatorIndex).trim()
+      const excludePart = line.slice(separatorIndex + 7).trim()
+
+      if (!includePart || !excludePart) {
+        return
+      }
+
+      const includeTerms = splitSpecialTerms(includePart)
+      const excludeTerms = splitSpecialTerms(excludePart).map(term => term.toLowerCase())
+
+      if (includeTerms.length === 0 || excludeTerms.length === 0) {
+        return
+      }
+
+      const canonicalKey = normalizeWord(includeTerms[0])
+      if (!canonicalKey) {
+        return
+      }
+
+      rules[canonicalKey] = excludeTerms
+    })
+
+    return rules
+  }
+
   useEffect(() => {
     const fetchSynonyms = async () => {
       try {
@@ -178,12 +255,29 @@ export default function AnalyzePage() {
     fetchSynonyms()
   }, [])
 
+  useEffect(() => {
+    const fetchExcluded = async () => {
+      try {
+        const response = await fetch('/tukhongdem.txt')
+        if (!response.ok) {
+          throw new Error('Failed to load tukhongdem.txt')
+        }
+        const text = await response.text()
+        const parsed = parseSpecialExclusionText(text)
+        setSpecialExclusionRules(parsed)
+      } catch (err) {
+        console.error('Error reading excluded-from list:', err)
+        setError(prev => prev ?? 'Không đọc được file tukhongdem.txt! Hãy đặt file trong thư mục public.')
+      } finally {
+        setSpecialExclusionsLoading(false)
+      }
+    }
+
+    fetchExcluded()
+  }, [])
+
   const stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'up', 'out', 'is', 'are', 'was', 'were', '3d', '3-d']
   const popKeywords = new Set(['pop', 'popup'])
-
-  const normalizeWord = (word: string): string => {
-    return word.toLowerCase().trim().replace(/[^a-z0-9]/g, '')
-  }
 
   const getWordVariants = (word: string): string[] => {
     const variants = new Set<string>([word.toLowerCase()])
@@ -360,6 +454,11 @@ export default function AnalyzePage() {
       return
     }
 
+    if (specialExclusionsLoading) {
+      setError('Đang tải danh sách từ đặc biệt, vui lòng thử lại sau!')
+      return
+    }
+
     if (Object.keys(synonymGroups).length === 0) {
       setError('Không tìm thấy dữ liệu từ đồng nghĩa. Đảm bảo file dongnghia.txt nằm trong thư mục public!')
       return
@@ -389,11 +488,20 @@ export default function AnalyzePage() {
       }
 
       const headers = jsonData[0].map((h: any) => String(h).toLowerCase().trim())
-      const matchedProductIndex = headers.findIndex((h: string) => {
-        // Tìm "Matched product" hoặc "Customer search term"
-        return (h.includes('matched') && h.includes('product')) ||
-          (h.includes('customer') && h.includes('search') && h.includes('term'))
-      })
+      const matchedProductIndex = headers.findIndex((h: string) =>
+        h.includes('matched') && h.includes('product')
+      )
+      const customerSearchTermIndex = headers.findIndex((h: string) =>
+        h.includes('customer') && h.includes('search') && h.includes('term')
+      )
+      const textColumnIndex = matchedProductIndex !== -1 ? matchedProductIndex : customerSearchTermIndex
+
+      if (textColumnIndex === -1) {
+        setError('Không tìm thấy cột Customer Search Term hoặc Matched Product trong file!')
+        setProcessing(false)
+        return
+      }
+
       const impressionsIndex = headers.findIndex((h: string) => h.includes('impression'))
       const clicksIndex = headers.findIndex((h: string) => h.includes('click'))
       const spendIndex = headers.findIndex((h: string) => h.includes('spend'))
@@ -401,291 +509,183 @@ export default function AnalyzePage() {
       const salesIndex = headers.findIndex((h: string) => h.includes('sales'))
       const cpcIndex = headers.findIndex((h: string) => h.includes('cpc'))
 
-      const wordToRows: { [key: string]: Set<number> } = {}
-      const wordToOriginalWords: { [key: string]: Set<string> } = {}
-      const threeDTypeRows = threeDKeywordGroups.reduce<Record<string, Set<number>>>((acc, item) => {
-        acc[item.type] = new Set<number>()
+      // Sử dụng Map để đếm số lần xuất hiện thực tế cho mỗi từ khóa
+      const keywordOccurrenceCount = new Map<string, number>()
+      const keywordRows = new Map<string, RowData[]>()
+      const firstOccurredWord = new Map<string, string>() // Theo dõi từ xuất hiện đầu tiên cho mỗi nhóm
+
+      // Initialize 3D and negative tracking
+      const threeDOccurrenceCount = threeDKeywordGroups.reduce<Record<string, number>>((acc, item) => {
+        acc[item.type] = 0
+        return acc
+      }, {})
+      const threeDTypeRows = threeDKeywordGroups.reduce<Record<string, RowData[]>>((acc, item) => {
+        acc[item.type] = []
         return acc
       }, {})
       const threeDMatchedTerms = threeDKeywordGroups.reduce<Record<string, Set<string>>>((acc, item) => {
         acc[item.type] = new Set<string>()
         return acc
       }, {})
+      const threeDMatchedTermsList = threeDKeywordGroups.reduce<Record<string, string[]>>((acc, item) => {
+        acc[item.type] = []
+        return acc
+      }, {})
       const negativeKeywordTerms = negativeKeywordGroups.reduce<Record<string, Set<string>>>((acc, item) => {
         acc[item.name] = new Set<string>()
         return acc
       }, {})
-      const groupMatchDetails: Record<string, SynonymMatchDetail> = {}
-      const groupMatchedTerms: Record<string, Set<string>> = {}
+      const negativeKeywordTermsList = negativeKeywordGroups.reduce<Record<string, string[]>>((acc, item) => {
+        acc[item.name] = []
+        return acc
+      }, {})
       const allMatchedTerms = new Set<string>()
+      const allMatchedTermsList: string[] = []
+
+      // Debug: đếm tổng số dòng có dữ liệu
+      let totalDataRows = 0
 
       for (let i = 1; i < jsonData.length; i++) {
         const row = jsonData[i]
         if (!row || row.length === 0) continue
 
-        const originalMatchedProduct = String(row[matchedProductIndex] || '').trim()
+        const originalMatchedProduct = String(row[textColumnIndex] || '').trim()
         const matchedProduct = originalMatchedProduct.toLowerCase()
-        if (!matchedProduct) continue
+        // Không skip dòng nào trừ dòng hoàn toàn trống
+        if (!originalMatchedProduct) continue
 
-        if (originalMatchedProduct) {
-          allMatchedTerms.add(originalMatchedProduct)
+        totalDataRows++ // Đếm mỗi dòng có dữ liệu
+
+        const rowData: RowData = {
+          matchedProduct: originalMatchedProduct,
+          impressions: parseNumber(row[impressionsIndex]),
+          clicks: parseNumber(row[clicksIndex]),
+          spend: parseNumber(row[spendIndex]),
+          orders: parseNumber(row[ordersIndex]),
+          sales: parseNumber(row[salesIndex]),
+          cpc: parseNumber(row[cpcIndex])
         }
 
+        // Xử lý synonym groups trước
+        for (const [groupName, keywords] of Object.entries(synonymGroups)) {
+          const matchedKeywords = keywords.filter(keyword => {
+            if (groupName.toLowerCase().includes('pop') && shouldExcludePopUpTerm(originalMatchedProduct)) {
+              return false
+            }
+            if (shouldExcludeFromTerm(groupName, keyword, originalMatchedProduct, specialExclusionRules)) {
+              return false
+            }
+            return matchesKeyword(matchedProduct, keyword)
+          })
+
+          if (matchedKeywords.length > 0) {
+            if (!keywordOccurrenceCount.has(groupName)) {
+              keywordOccurrenceCount.set(groupName, 0)
+              keywordRows.set(groupName, [])
+              // Ghi nhận từ đầu tiên xuất hiện trong nhóm này
+              firstOccurredWord.set(groupName, matchedKeywords[0])
+            } else {
+              // Nếu đã có nhóm này, kiểm tra xem có tên nhóm gốc không
+              const currentFirst = firstOccurredWord.get(groupName)
+              if (matchedKeywords.includes(groupName) && currentFirst !== groupName) {
+                // Nếu tìm thấy tên nhóm gốc, ưu tiên hiển thị nó
+                firstOccurredWord.set(groupName, groupName)
+              }
+            }
+            keywordOccurrenceCount.set(groupName, keywordOccurrenceCount.get(groupName)! + 1)
+            keywordRows.get(groupName)!.push(rowData)
+          }
+        }
+
+        // Xử lý individual words (không thuộc synonym groups)
+        const words = extractWords(matchedProduct)
+        const processedWords = new Set<string>()
+
+        // Đánh dấu những từ đã được xử lý trong synonym groups
+        for (const [groupName, keywords] of Object.entries(synonymGroups)) {
+          keywords.forEach(keyword => {
+            if (matchesKeyword(matchedProduct, keyword)) {
+              const normalized = normalizeWord(keyword)
+              if (normalized) {
+                processedWords.add(normalized)
+              }
+            }
+          })
+        }
+
+        words.forEach(word => {
+          const normalizedWord = normalizeWord(word)
+          if (!normalizedWord || processedWords.has(normalizedWord) || popKeywords.has(normalizedWord)) {
+            return
+          }
+
+          if (!keywordOccurrenceCount.has(normalizedWord)) {
+            keywordOccurrenceCount.set(normalizedWord, 0)
+            keywordRows.set(normalizedWord, [])
+          }
+          keywordOccurrenceCount.set(normalizedWord, keywordOccurrenceCount.get(normalizedWord)! + 1)
+          keywordRows.get(normalizedWord)!.push(rowData)
+        })
+
+        // Xử lý 3D groups
         threeDKeywordGroups.forEach(group => {
           if (matchesThreeDGroup(matchedProduct, group, isExactWord)) {
             if (!(group.type.toLowerCase().includes('pop') && shouldExcludePopUpTerm(originalMatchedProduct))) {
-              threeDTypeRows[group.type].add(i)
+              threeDOccurrenceCount[group.type]++
+              threeDTypeRows[group.type].push(rowData)
               threeDMatchedTerms[group.type].add(originalMatchedProduct)
+              threeDMatchedTermsList[group.type].push(originalMatchedProduct)
             }
           }
         })
 
+        // Xử lý negative groups
         negativeKeywordGroups.forEach(group => {
           if (group.keywords.some(keyword => matchesKeyword(matchedProduct, keyword))) {
-            negativeKeywordTerms[group.name].add(String(row[matchedProductIndex] || '').trim())
+            const term = String(row[textColumnIndex] || '').trim()
+            negativeKeywordTerms[group.name].add(term)
+            negativeKeywordTermsList[group.name].push(term)
           }
         })
 
-        const groupsInThisRow = new Set<string>()
-        const rowSynonymMatches: Record<string, Set<string>> = {}
-
-        const registerSynonymGroupMatch = (groupName: string, keyword: string, matchedTerm: string) => {
-          if (groupName.toLowerCase().includes('pop') && shouldExcludePopUpTerm(matchedTerm)) {
-            return
-          }
-
-          // Loại trừ các từ có "from" (trừ khi từ đồng nghĩa cũng có "from")
-          if (shouldExcludeFromTerm(matchedTerm, keyword)) {
-            return
-          }
-
-          groupsInThisRow.add(groupName)
-
-          const normalizedKey = normalizeWord(keyword)
-          if (!normalizedKey) {
-            return
-          }
-
-          if (!groupMatchDetails[groupName]) {
-            groupMatchDetails[groupName] = {
-              rows: new Set<number>(),
-              synonyms: new Map<string, { original: string, count: number }>()
-            }
-          }
-
-          if (!groupMatchedTerms[groupName]) {
-            groupMatchedTerms[groupName] = new Set<string>()
-          }
-          groupMatchedTerms[groupName].add(matchedTerm)
-
-          if (groupName === 'wife') {
-            console.log('[wife-match]', {
-              keyword,
-              matchedTerm,
-              totalUniqueMatches: groupMatchedTerms[groupName].size
-            })
-          }
-
-          const detail = groupMatchDetails[groupName]
-          detail.rows.add(i)
-
-          if (!rowSynonymMatches[groupName]) {
-            rowSynonymMatches[groupName] = new Set<string>()
-          }
-
-          if (rowSynonymMatches[groupName].has(normalizedKey)) {
-            return
-          }
-
-          rowSynonymMatches[groupName].add(normalizedKey)
-
-          const existing = detail.synonyms.get(normalizedKey)
-          if (existing) {
-            existing.count += 1
-          } else {
-            detail.synonyms.set(normalizedKey, {
-              original: keyword,
-              count: 1
-            })
-          }
+        if (originalMatchedProduct) {
+          allMatchedTerms.add(originalMatchedProduct)
+          allMatchedTermsList.push(originalMatchedProduct)
         }
-
-        if (exactMatch) {
-          const processedWords = new Set<string>()
-
-          // Ưu tiên kiểm tra các cụm từ trước
-          for (const [groupName, keywords] of Object.entries(synonymGroups)) {
-            const phraseKeywords = keywords.filter(k => k.includes(' '))
-            phraseKeywords.forEach(k => {
-              if (matchesKeyword(matchedProduct, k)) {
-                registerSynonymGroupMatch(groupName, k, originalMatchedProduct)
-                const phraseWords = k.toLowerCase().split(/\s+/)
-                phraseWords.forEach(w => {
-                  const normalized = normalizeWord(w)
-                  if (normalized && !stopWords.includes(w)) {
-                    processedWords.add(normalized)
-                  }
-                })
-              }
-            })
-          }
-
-          // Sau đó kiểm tra các từ đơn trong nhóm đồng nghĩa
-          for (const [groupName, keywords] of Object.entries(synonymGroups)) {
-            const singleKeywords = keywords.filter(k => !k.includes(' '))
-            singleKeywords.forEach(k => {
-              if (matchesKeyword(matchedProduct, k)) {
-                registerSynonymGroupMatch(groupName, k, originalMatchedProduct)
-                const normalized = normalizeWord(k)
-                if (normalized) {
-                  processedWords.add(normalized)
-                }
-              }
-            })
-          }
-
-          // Cuối cùng xử lý các từ còn lại (không thuộc nhóm đồng nghĩa)
-          const words = extractWords(matchedProduct)
-          words.forEach(word => {
-            if (!stopWords.includes(word)) {
-              const normalizedWord = normalizeWord(word)
-              if (!normalizedWord || processedWords.has(normalizedWord)) {
-                return
-              }
-              if (popKeywords.has(normalizedWord)) {
-                return
-              }
-
-              let matchedSynonymGroup = false
-              for (const [groupName, keywords] of Object.entries(synonymGroups)) {
-                const matchedKeyword = keywords.find(k => {
-                  if (k.includes(' ')) return false
-                  // Sử dụng matchesKeyword để kiểm tra cả biến thể
-                  return matchesKeyword(originalMatchedProduct, k)
-                })
-                if (matchedKeyword) {
-                  registerSynonymGroupMatch(groupName, matchedKeyword, originalMatchedProduct)
-                  processedWords.add(normalizedWord)
-                  matchedSynonymGroup = true
-                  break
-                }
-              }
-
-              if (!matchedSynonymGroup) {
-                // Loại trừ các từ có "from" khi đếm từ đơn lẻ
-                if (originalMatchedProduct.toLowerCase().includes('from')) {
-                  return
-                }
-                const normalized = normalizeWord(word)
-                groupsInThisRow.add(normalized)
-                if (!groupMatchedTerms[normalized]) {
-                  groupMatchedTerms[normalized] = new Set<string>()
-                }
-                groupMatchedTerms[normalized].add(originalMatchedProduct)
-                // Lưu từ gốc để hiển thị đúng
-                if (!wordToOriginalWords[normalized]) {
-                  wordToOriginalWords[normalized] = new Set<string>()
-                }
-                wordToOriginalWords[normalized].add(word)
-              }
-            }
-          })
-        } else {
-          for (const [groupName, keywords] of Object.entries(synonymGroups)) {
-            keywords.forEach(k => {
-              if (matchesKeyword(matchedProduct, k)) {
-                registerSynonymGroupMatch(groupName, k, originalMatchedProduct)
-              }
-            })
-          }
-
-          const words = extractWords(matchedProduct)
-          words.forEach(word => {
-            if (!stopWords.includes(word)) {
-              const normalizedWord = normalizeWord(word)
-              if (!normalizedWord || popKeywords.has(normalizedWord)) {
-                return
-              }
-
-              let inSynonymGroup = false
-              for (const [groupName, keywords] of Object.entries(synonymGroups)) {
-                const matchedKeyword = keywords.find(k => {
-                  if (k.includes(' ')) {
-                    return matchesKeyword(originalMatchedProduct, k)
-                  }
-                  // Sử dụng matchesKeyword để kiểm tra cả biến thể
-                  return matchesKeyword(originalMatchedProduct, k)
-                })
-                if (matchedKeyword) {
-                  registerSynonymGroupMatch(groupName, matchedKeyword, originalMatchedProduct)
-                  inSynonymGroup = true
-                  break
-                }
-              }
-              if (!inSynonymGroup) {
-                // Loại trừ các từ có "from" khi đếm từ đơn lẻ
-                if (originalMatchedProduct.toLowerCase().includes('from')) {
-                  return
-                }
-                groupsInThisRow.add(normalizedWord)
-                if (!groupMatchedTerms[normalizedWord]) {
-                  groupMatchedTerms[normalizedWord] = new Set<string>()
-                }
-                groupMatchedTerms[normalizedWord].add(originalMatchedProduct)
-                // Lưu từ gốc để hiển thị đúng
-                if (!wordToOriginalWords[normalizedWord]) {
-                  wordToOriginalWords[normalizedWord] = new Set<string>()
-                }
-                wordToOriginalWords[normalizedWord].add(word)
-              }
-            }
-          })
-        }
-
-        groupsInThisRow.forEach(groupName => {
-          if (!wordToRows[groupName]) {
-            wordToRows[groupName] = new Set()
-          }
-          wordToRows[groupName].add(i)
-        })
       }
+
+      console.log('=== DEBUG INFO ===')
+      console.log('Total data rows processed:', totalDataRows)
+      console.log('Total unique matched products:', allMatchedTerms.size)
+      console.log('All matched terms list length:', allMatchedTermsList.length)
 
       const groups: { [key: string]: { rows: RowData[], occurrence: number } } = {}
 
-      for (const [word, rowIndices] of Object.entries(wordToRows)) {
-        const rows: RowData[] = []
-
-        rowIndices.forEach(i => {
-          const row = jsonData[i]
-          rows.push({
-            matchedProduct: String(row[matchedProductIndex] || ''),
-            impressions: parseNumber(row[impressionsIndex]),
-            clicks: parseNumber(row[clicksIndex]),
-            spend: parseNumber(row[spendIndex]),
-            orders: parseNumber(row[ordersIndex]),
-            sales: parseNumber(row[salesIndex]),
-            cpc: parseNumber(row[cpcIndex])
-          })
-        })
-
-        groups[word] = {
-          rows: rows,
-          occurrence: rowIndices.size
+      // Thêm tất cả keyword groups vào groups
+      keywordOccurrenceCount.forEach((occurrenceCount, keyword) => {
+        groups[keyword] = {
+          rows: keywordRows.get(keyword) || [],
+          occurrence: occurrenceCount
         }
-      }
+      })
 
       const stats: GroupStats[] = []
 
-      const allUniqueRows = new Set<number>()
-      Object.values(wordToRows).forEach(rowSet => {
-        rowSet.forEach(rowIndex => allUniqueRows.add(rowIndex))
-      })
+      const totalOccurrencesFromKeywords = Array.from(keywordOccurrenceCount.values()).reduce((sum, count) => sum + count, 0)
+      console.log('Total occurrences from keyword analysis:', totalOccurrencesFromKeywords)
+      console.log('Total data rows processed:', totalDataRows)
 
+      // Tạo totalRows từ tất cả dòng dữ liệu, không chỉ từ keyword analysis
       const totalRows: RowData[] = []
-      allUniqueRows.forEach(i => {
+      for (let i = 1; i < jsonData.length; i++) {
         const row = jsonData[i]
+        if (!row || row.length === 0) continue
+
+        const originalMatchedProduct = String(row[textColumnIndex] || '').trim()
+        if (!originalMatchedProduct) continue
+
         totalRows.push({
-          matchedProduct: String(row[matchedProductIndex] || ''),
+          matchedProduct: originalMatchedProduct,
           impressions: parseNumber(row[impressionsIndex]),
           clicks: parseNumber(row[clicksIndex]),
           spend: parseNumber(row[spendIndex]),
@@ -693,22 +693,21 @@ export default function AnalyzePage() {
           sales: parseNumber(row[salesIndex]),
           cpc: parseNumber(row[cpcIndex])
         })
-      })
+      }
 
-      const totalOccurrence = allUniqueRows.size
+      const totalOccurrence = totalRows.length // Sử dụng số dòng thực tế
       const totalStats = calculateGroupStats('Total', totalRows, totalOccurrence)
       stats.push(totalStats)
 
       // Gộp các nhóm có cùng base word lại với nhau
-      const mergedGroups: { [key: string]: { rows: RowData[], occurrence: number, originalNames: string[] } } = {}
+      const mergedGroups: { [key: string]: { rows: RowData[], originalNames: string[], totalOccurrence: number } } = {}
 
       for (const [groupName, data] of Object.entries(groups)) {
         // Kiểm tra xem có phải là nhóm đồng nghĩa không
         if (synonymGroups[groupName]) {
-          // Nếu là nhóm đồng nghĩa, xử lý bình thường
-          const displayName = buildSynonymGroupLabel(groupName, synonymGroups, groupMatchDetails)
-          const occurrenceCount = groupMatchedTerms[groupName]?.size ?? data.occurrence
-          const groupStats = calculateGroupStats(displayName, data.rows, occurrenceCount)
+          // Nếu là nhóm đồng nghĩa, sử dụng từ xuất hiện đầu tiên làm tên hiển thị
+          const displayName = firstOccurredWord.get(groupName) || groupName
+          const groupStats = calculateGroupStats(displayName, data.rows, data.occurrence)
           stats.push(groupStats)
         } else {
           // Nếu không phải nhóm đồng nghĩa, gộp theo base word
@@ -716,23 +715,15 @@ export default function AnalyzePage() {
           if (!mergedGroups[base]) {
             mergedGroups[base] = {
               rows: [],
-              occurrence: 0,
-              originalNames: []
+              originalNames: [],
+              totalOccurrence: 0
             }
           }
+          // Thêm tất cả rows, không loại trùng
           mergedGroups[base].rows.push(...data.rows)
-          mergedGroups[base].occurrence += data.occurrence
-          // Sử dụng từ gốc từ wordToOriginalWords nếu có, nếu không thì dùng groupName
-          const originalWords = wordToOriginalWords[groupName]
-          if (originalWords && originalWords.size > 0) {
-            originalWords.forEach(origWord => {
-              if (!mergedGroups[base].originalNames.includes(origWord)) {
-                mergedGroups[base].originalNames.push(origWord)
-              }
-            })
-          } else {
-            mergedGroups[base].originalNames.push(groupName)
-          }
+          // Cộng occurrence thực tế
+          mergedGroups[base].totalOccurrence += data.occurrence
+          mergedGroups[base].originalNames.push(groupName)
         }
       }
 
@@ -762,21 +753,7 @@ export default function AnalyzePage() {
           ? mergedData.originalNames.join('/')
           : mergedData.originalNames[0]
 
-        // Loại bỏ duplicate rows nhưng vẫn giữ tất cả các rows để tính toán đúng
-        const uniqueRows = mergedData.rows.reduce((acc, row) => {
-          const key = row.matchedProduct
-          if (!acc.has(key)) {
-            acc.set(key, row)
-          }
-          return acc
-        }, new Map<string, RowData>())
-
-        const uniqueRowsArray = Array.from(uniqueRows.values())
-        // Tính occurrence dựa trên số dòng unique thực tế
-        // Vì các biến thể có thể xuất hiện ở cùng một dòng
-        const occurrenceCount = uniqueRowsArray.length
-
-        const groupStats = calculateGroupStats(displayName, uniqueRowsArray, occurrenceCount)
+        const groupStats = calculateGroupStats(displayName, mergedData.rows, mergedData.totalOccurrence)
         stats.push(groupStats)
       }
 
@@ -784,35 +761,20 @@ export default function AnalyzePage() {
       const others = stats.slice(1).sort((a, b) => b.occurrence - a.occurrence)
 
       setGroupedData([total, ...others])
-      const matchedGroupsList = Object.keys(groupMatchDetails)
+
+      // Tạo matched synonym groups từ groups object với từ xuất hiện đầu tiên
+      const matchedGroupsList = Object.keys(groups)
         .filter(groupName => synonymGroups[groupName])
         .map(groupName => ({
-          label: buildSynonymGroupLabel(groupName, synonymGroups, groupMatchDetails),
+          label: firstOccurredWord.get(groupName) || groupName,
           synonyms: synonymGroups[groupName]
         }))
         .sort((a, b) => a.label.localeCompare(b.label))
-      const uniqueMatchedGroups = matchedGroupsList.reduce<Array<{ label: string, synonyms: string[] }>>((acc, item) => {
-        if (!acc.find(existing => existing.label === item.label)) {
-          acc.push(item)
-        }
-        return acc
-      }, [])
-      setMatchedSynonymGroups(uniqueMatchedGroups)
+
+      setMatchedSynonymGroups(matchedGroupsList)
       const threeDStatsResults: GroupStats[] = threeDKeywordGroups.map(group => {
-        const rows: RowData[] = []
-        threeDTypeRows[group.type].forEach(index => {
-          const row = jsonData[index]
-          rows.push({
-            matchedProduct: String(row[matchedProductIndex] || ''),
-            impressions: parseNumber(row[impressionsIndex]),
-            clicks: parseNumber(row[clicksIndex]),
-            spend: parseNumber(row[spendIndex]),
-            orders: parseNumber(row[ordersIndex]),
-            sales: parseNumber(row[salesIndex]),
-            cpc: parseNumber(row[cpcIndex])
-          })
-        })
-        const occurrenceCount = threeDMatchedTerms[group.type]?.size ?? rows.length
+        const rows = threeDTypeRows[group.type]
+        const occurrenceCount = threeDOccurrenceCount[group.type]
         return calculateGroupStats(group.type, rows, occurrenceCount)
       })
       setThreeDStats(threeDStatsResults)
@@ -828,21 +790,21 @@ export default function AnalyzePage() {
 
       setNegativeMatches(negativeResults)
 
+      // Dữ liệu cho phần tra cứu nhóm từ: dùng mảng để GIỮ TRÙNG (đếm theo Matched product)
       const threeDSearchData: Record<string, string[]> = {}
-      Object.entries(threeDMatchedTerms).forEach(([groupName, terms]) => {
-        if (terms.size === 0) return
-        threeDSearchData[groupName] = Array.from(terms).sort((a, b) => a.localeCompare(b))
+      Object.entries(threeDMatchedTermsList).forEach(([groupName, terms]) => {
+        if (terms.length === 0) return
+        threeDSearchData[groupName] = [...terms]
       })
 
       const negativeSearchData: Record<string, string[]> = {}
-      Object.entries(negativeKeywordTerms).forEach(([groupName, terms]) => {
-        if (terms.size === 0) return
-        negativeSearchData[groupName] = Array.from(terms).sort((a, b) => a.localeCompare(b))
+      Object.entries(negativeKeywordTermsList).forEach(([groupName, terms]) => {
+        if (terms.length === 0) return
+        negativeSearchData[groupName] = [...terms]
       })
 
-      const keywordTerms = Array.from(allMatchedTerms)
+      const keywordTerms = allMatchedTermsList
         .filter(term => term.length > 0)
-        .sort((a, b) => a.localeCompare(b))
 
       setSearchData({
         keywordTerms,
@@ -1225,7 +1187,7 @@ export default function AnalyzePage() {
     XLSX.writeFile(finalWorkbook, fileName)
   }
 
-  const analyzeDisabled = processing || synonymsLoading
+  const analyzeDisabled = processing || synonymsLoading || specialExclusionsLoading
 
   return (
     <div style={{
